@@ -1,6 +1,6 @@
 # Quadwright
 
-![CI](https://github.com/YOUR-USERNAME/quadwright/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/CarsonBavery/quadwright/actions/workflows/ci.yml/badge.svg)
 
 Quadwright turns open map data into glue-free wooden model kits of college
 campuses: a base plate plus separately milled buildings that press-fit into
