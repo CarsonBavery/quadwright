@@ -9,6 +9,9 @@ from pydantic import ValidationError
 
 from quadwright import __version__
 from quadwright.config import load_config
+from quadwright.geo.footprints import load_buildings
+from quadwright.geo.render import render_footprints
+from quadwright.sources.osm import fetch_buildings
 
 app = typer.Typer(help="Quadwright: wooden campus kits from open map data.", no_args_is_help=True)
 
@@ -48,14 +51,26 @@ def _planned(week: int) -> None:
 
 @app.command()
 def fetch(config: Path = ConfigArg) -> None:
-    """Download and cache OSM data for the campus. [week 2]"""
-    _planned(2)
+    """Download and cache OSM building data for the campus (FR-02)."""
+    cfg = load_config(config)
+    path = fetch_buildings(cfg.campus)
+    typer.secho(f"Cached: {path}", fg=typer.colors.GREEN)
 
 
 @app.command()
 def preview(config: Path = ConfigArg) -> None:
-    """Draw a 2D map of footprints, height sources, or tiers. [week 2]"""
-    _planned(2)
+    """Draw a 2D map of building footprints (FR-03, FR-04). Heights/tiers come later."""
+    cfg = load_config(config)
+    raw_path = Path("data/raw") / cfg.campus.name / "buildings.geojson"
+    if not raw_path.exists():
+        typer.secho(f"No cached data for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
+        typer.echo(f"Run first: quadwright fetch {config}", err=True)
+        raise typer.Exit(code=1)
+
+    buildings = load_buildings(raw_path, cfg.campus.bbox)
+    out_path = Path("outputs") / cfg.campus.name / "footprints.png"
+    render_footprints(buildings, out_path)
+    typer.secho(f"Wrote {out_path} ({len(buildings)} buildings)", fg=typer.colors.GREEN)
 
 
 @app.command()

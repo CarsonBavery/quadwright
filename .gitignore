@@ -10,6 +10,7 @@ __pycache__/
 # Quadwright data and build outputs (regenerable from configs + cache)
 data/
 outputs/
+cache/
 
 # Editors and OS
 .vscode/*

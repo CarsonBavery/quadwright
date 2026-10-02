@@ -1,0 +1,63 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "way/100",
+      "properties": {
+        "element_type": "way",
+        "osmid": 100,
+        "building": "yes",
+        "name": "Old Main"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-79.9980, 35.0040],
+            [-79.9975, 35.0040],
+            [-79.9975, 35.0045],
+            [-79.9980, 35.0045],
+            [-79.9980, 35.0040]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/101",
+      "properties": {
+        "element_type": "way",
+        "osmid": 101,
+        "building": "yes"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-79.9970, 35.0030],
+            [-79.9965, 35.0030],
+            [-79.9966, 35.0033],
+            [-79.9968, 35.0031],
+            [-79.9970, 35.0033],
+            [-79.9970, 35.0030]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/102",
+      "properties": {
+        "element_type": "node",
+        "osmid": 102,
+        "building": "yes",
+        "name": "Not a real footprint"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-79.9972, 35.0032]
+      }
+    }
+  ]
+}

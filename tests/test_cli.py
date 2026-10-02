@@ -24,3 +24,10 @@ def test_validate_bad_config_fails(tmp_path):
 def test_planned_commands_exit_cleanly():
     result = runner.invoke(app, ["build", EXAMPLE])
     assert result.exit_code == 2
+
+
+def test_fr04_preview_without_fetch_fails_with_a_hint(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # isolate from any real data/raw in the repo
+    result = runner.invoke(app, ["preview", EXAMPLE])
+    assert result.exit_code == 1
+    assert "quadwright fetch" in result.output

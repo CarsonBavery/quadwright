@@ -1,0 +1,30 @@
+# UNC Charlotte main campus. bbox from OSM/Nominatim via `ox.geocode_to_gdf`.
+
+campus:
+  name: unc-charlotte
+  bbox: [-80.74675, 35.296975, -80.721494, 35.315842]   # west, south, east, north
+
+scale:
+  target_size_mm: [450, 300]
+  vertical_exaggeration: 1.5
+
+tool:
+  diameter_mm: 3.175
+  type: flat_end_mill
+
+materials:
+  base: walnut
+  buildings: maple
+
+heights:
+  default_m: 12
+  meters_per_level: 3.5
+
+tiers:
+  merge_below_tool_diameters: 3
+  rotate_above_tool_diameters: 20
+
+roofs:
+  engine: rules
+
+outputs: [part_stl, base_stl, setup_sheets, tier_report]
