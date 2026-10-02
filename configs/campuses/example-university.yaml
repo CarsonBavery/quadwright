@@ -1,0 +1,35 @@
+# Example campus config. Copy this file, rename it, and set your own bbox.
+# Find a bbox at https://boundingbox.klokantech.com (choose "CSV" format).
+
+campus:
+  name: example-university
+  bbox: [-80.000, 35.000, -79.990, 35.008]   # west, south, east, north
+
+scale:
+  target_size_mm: [450, 300]   # or ratio: 2500, never both
+  vertical_exaggeration: 1.5
+
+tool:
+  diameter_mm: 3.175
+  type: flat_end_mill
+
+materials:
+  base: walnut
+  buildings: maple             # clearance read from configs/species/maple.yaml
+
+heights:
+  default_m: 12
+  meters_per_level: 3.5
+  overrides:
+    "Old Main": 28
+
+tiers:
+  merge_below_tool_diameters: 3
+  rotate_above_tool_diameters: 20
+  overrides:
+    "Clock Tower": 3           # hero building
+
+roofs:
+  engine: rules                # rules | ml
+
+outputs: [part_stl, base_stl, setup_sheets, tier_report]

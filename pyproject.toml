@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quadwright"
+version = "0.1.0"
+description = "Turn open map data into glue-free wooden campus model kits."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "typer>=0.12",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "osmnx>=1.9",
+    "trimesh>=4.0",
+    "manifold3d>=2.4",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+    "ruff>=0.5",
+    "pre-commit>=3.7",
+    "pyright>=1.1.380",
+]
+ml = [
+    "laspy>=2.5",
+    "scikit-learn>=1.4",
+]
+
+[project.scripts]
+quadwright = "quadwright.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["quadwright*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.pyright]
+include = ["quadwright", "tests"]
+venvPath = "."
+venv = ".venv"

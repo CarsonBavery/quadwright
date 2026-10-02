@@ -1,0 +1,5 @@
+# Fit data for walnut. Fill in clearance_mm after cutting the tolerance coupon (week 6).
+species: walnut
+clearance_mm: null        # chosen tenon-to-pocket gap, e.g. 0.10
+tested_on: null           # date of the coupon test, e.g. 2026-11-12
+notes: ""
