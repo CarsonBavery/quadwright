@@ -28,6 +28,12 @@ This is a learning project. Explain non-obvious code in comments.
 - Never change config schema without updating the example YAML.
 - Do not add dependencies without asking.
 - When unsure about fabrication behavior, ask rather than guess.
+- Never commit directly to `main`. Create a branch per change
+  (`feat/`, `fix/`, `chore/`, `docs/` prefix) before editing.
+- Whenever a branch is pushed, open a PR in the same step
+  (`gh pr create`, title + summary/test-plan body). Ask before merging.
+  `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: none. Next: M0 project setup (CI green).
+Week: 1. Last milestone: M0 project setup (CI green, PR #1 merged).
+Next: M1 Footprints.
