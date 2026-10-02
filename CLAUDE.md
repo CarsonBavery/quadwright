@@ -30,4 +30,5 @@ This is a learning project. Explain non-obvious code in comments.
 - When unsure about fabrication behavior, ask rather than guess.
 
 ## Current state
-Week: 1. Last milestone: none. Next: M0 project setup (CI green).
+Week: 1. Last milestone: M1 Footprints (fetch, normalize, preview; PR merged).
+Next: M2 Heights (rule-based height resolution, FR-05).

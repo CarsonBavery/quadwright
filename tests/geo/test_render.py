@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from quadwright.config import Heights
 from quadwright.geo.footprints import load_buildings
 from quadwright.geo.render import render_footprints
 
@@ -10,7 +11,7 @@ EXAMPLE_BBOX = (-80.000, 35.000, -79.990, 35.008)
 
 
 def test_fr04_writes_a_nonempty_png(tmp_path):
-    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX)
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, Heights())
     out_path = tmp_path / "footprints.png"
 
     render_footprints(buildings, out_path)
