@@ -3,10 +3,9 @@
   "features": [
     {
       "type": "Feature",
-      "id": "way/100",
       "properties": {
-        "element_type": "way",
-        "osmid": 100,
+        "element": "way",
+        "id": 100,
         "building": "yes",
         "name": "Old Main"
       },
@@ -25,10 +24,9 @@
     },
     {
       "type": "Feature",
-      "id": "way/101",
       "properties": {
-        "element_type": "way",
-        "osmid": 101,
+        "element": "way",
+        "id": 101,
         "building": "yes"
       },
       "geometry": {
@@ -47,10 +45,9 @@
     },
     {
       "type": "Feature",
-      "id": "node/102",
       "properties": {
-        "element_type": "node",
-        "osmid": 102,
+        "element": "node",
+        "id": 102,
         "building": "yes",
         "name": "Not a real footprint"
       },
