@@ -2,26 +2,28 @@
 
 from pathlib import Path
 
+from quadwright.config import Heights
 from quadwright.geo.footprints import load_buildings
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "sample_buildings.geojson"
 EXAMPLE_BBOX = (-80.000, 35.000, -79.990, 35.008)
+HEIGHTS = Heights()  # the fixture has no height/levels tags, so these are all defaults
 
 
 def test_fr03_skips_non_polygon_features():
-    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX)
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     assert len(buildings) == 2  # the fixture's lone Point feature is dropped
 
 
 def test_fr03_keeps_name_when_present():
-    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX)
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     names = {b.name for b in buildings}
     assert "Old Main" in names
     assert None in names  # the second fixture building has no name tag
 
 
 def test_fr03_reprojects_to_local_meters():
-    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX)
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     for building in buildings:
         minx, miny, maxx, maxy = building.footprint.bounds
         # Fixture footprints are ~50m wide; still-in-degrees coordinates
@@ -31,5 +33,11 @@ def test_fr03_reprojects_to_local_meters():
 
 
 def test_fr03_osm_id_includes_element_type():
-    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX)
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     assert {b.osm_id for b in buildings} == {"way/100", "way/101"}
+
+
+def test_fr05_defaults_height_when_fixture_has_no_tags():
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
+    assert {b.height_source for b in buildings} == {"default"}
+    assert {b.height_m for b in buildings} == {HEIGHTS.default_m}

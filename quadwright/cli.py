@@ -59,7 +59,7 @@ def fetch(config: Path = ConfigArg) -> None:
 
 @app.command()
 def preview(config: Path = ConfigArg) -> None:
-    """Draw a 2D map of building footprints (FR-03, FR-04). Heights/tiers come later."""
+    """Draw a 2D map of building footprints (FR-03, FR-04, FR-05). Tiers come later."""
     cfg = load_config(config)
     raw_path = Path("data/raw") / cfg.campus.name / "buildings.geojson"
     if not raw_path.exists():
@@ -67,7 +67,7 @@ def preview(config: Path = ConfigArg) -> None:
         typer.echo(f"Run first: quadwright fetch {config}", err=True)
         raise typer.Exit(code=1)
 
-    buildings = load_buildings(raw_path, cfg.campus.bbox)
+    buildings = load_buildings(raw_path, cfg.campus.bbox, cfg.heights)
     out_path = Path("outputs") / cfg.campus.name / "footprints.png"
     render_footprints(buildings, out_path)
     typer.secho(f"Wrote {out_path} ({len(buildings)} buildings)", fg=typer.colors.GREEN)

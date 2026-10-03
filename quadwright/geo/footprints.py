@@ -9,15 +9,21 @@ import pyproj
 from shapely.geometry import shape
 from shapely.ops import transform
 
+from quadwright.config import Heights
+from quadwright.geo.heights import resolve_height
 from quadwright.model import Building
 
 
-def load_buildings(raw_path: str | Path, bbox: tuple[float, float, float, float]) -> list[Building]:
+def load_buildings(
+    raw_path: str | Path, bbox: tuple[float, float, float, float], heights: Heights
+) -> list[Building]:
     """Read a cached GeoJSON of raw OSM features and return Buildings in local UTM meters.
 
     `bbox` (the campus area's west, south, east, north) picks the UTM zone, so
     every building in one campus lands in the same local, metric coordinate
-    system regardless of which zone it's actually in.
+    system regardless of which zone it's actually in. `heights` is the
+    campus config's height rules, used to fill in height_m (FR-05) since
+    most OSM buildings don't carry a height tag.
     """
     data = json.loads(Path(raw_path).read_text(encoding="utf-8"))
     to_local = _utm_projector(bbox)
@@ -29,11 +35,15 @@ def load_buildings(raw_path: str | Path, bbox: tuple[float, float, float, float]
             continue  # OSM tag queries can also return points/lines; footprints only
         props = feature.get("properties", {})
         osm_id = f"{props.get('element_type', 'way')}/{props.get('osmid', feature.get('id', ''))}"
+        name = props.get("name")
+        height_m, height_source = resolve_height(props, name, heights)
         buildings.append(
             Building(
                 osm_id=osm_id,
                 footprint=transform(to_local, geom),
-                name=props.get("name"),
+                name=name,
+                height_m=height_m,
+                height_source=height_source,
             )
         )
     return buildings

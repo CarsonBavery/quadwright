@@ -35,5 +35,5 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M0 project setup (CI green, PR #1 merged).
-Next: M1 Footprints.
+Week: 1. Last milestone: M1 Footprints (fetch, normalize, preview; PR merged).
+Next: M2 Heights (rule-based height resolution, FR-05).
