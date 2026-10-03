@@ -4,7 +4,8 @@ import pytest
 from shapely.geometry import Polygon
 
 from quadwright.config import Scale
-from quadwright.mesh.scale import compute_scale_mm_per_m, to_model_mm
+from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
+from quadwright.model import Building
 
 
 def test_fr06_ratio_scale_is_direct():
@@ -32,3 +33,15 @@ def test_fr06_to_model_mm_shifts_to_origin_and_scales():
     footprint_m = Polygon([(10, 20), (15, 20), (15, 25), (10, 25)])
     footprint_mm = to_model_mm(footprint_m, origin_m=(10, 20), scale_mm_per_m=2.0)
     assert list(footprint_mm.exterior.coords)[:4] == [(0, 0), (10, 0), (10, 10), (0, 10)]
+
+
+def test_fr07_scale_buildings_converts_footprints_and_heights_by_osm_id():
+    footprint_m = Polygon([(10, 20), (15, 20), (15, 25), (10, 25)])
+    building = Building(osm_id="way/1", footprint=footprint_m, height_m=10.0)
+
+    footprints_mm, heights_mm = scale_buildings(
+        [building], origin_m=(10, 20), scale_mm_per_m=2.0, vertical_exaggeration=1.5
+    )
+
+    assert list(footprints_mm["way/1"].exterior.coords)[:4] == [(0, 0), (10, 0), (10, 10), (0, 10)]
+    assert heights_mm["way/1"] == pytest.approx(10.0 * 2.0 * 1.5)
