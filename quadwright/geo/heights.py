@@ -37,7 +37,23 @@ def resolve_height(
       by `heights.meters_per_level` to convert.
     - If nothing above applies, fall back to `heights.default_m`.
     """
-    raise NotImplementedError("resolve_height: implement the precedence rules")
+    if name is not None and name in heights.overrides:
+        return heights.overrides[name], "override"
+
+    if "height" in tags:
+        parsed = _parse_height_tag(tags["height"])
+        if parsed is not None:
+            return parsed, "tag"
+
+    if "building:levels" in tags:
+        try:
+            levels = float(tags["building:levels"])
+        except ValueError:
+            levels = None
+        if levels is not None:
+            return levels * heights.meters_per_level, "levels"
+
+    return heights.default_m, "default"
 
 
 def _parse_height_tag(value: str) -> float | None:
