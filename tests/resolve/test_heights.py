@@ -47,3 +47,18 @@ def test_fr05_ignores_unparseable_height_tag_and_falls_through():
     height, source = resolve_height({"height": "~15", "building:levels": "4"}, None, HEIGHTS)
     assert height == pytest.approx(14.0)
     assert source == "levels"
+
+
+def test_fr05_treats_present_but_null_tags_as_missing():
+    # osmnx's GeoJSON export fills every feature with every tag column ever
+    # seen in the dataset, so "height"/"building:levels" are almost always
+    # *present* with a None value rather than absent -- a real crash found
+    # while smoke-testing `quadwright build` against cached unc-charlotte data.
+    height, source = resolve_height({"height": None, "building:levels": None}, None, HEIGHTS)
+    assert (height, source) == (12.0, "default")
+
+
+def test_fr05_falls_through_a_null_height_tag_to_levels():
+    height, source = resolve_height({"height": None, "building:levels": "4"}, None, HEIGHTS)
+    assert height == pytest.approx(14.0)
+    assert source == "levels"

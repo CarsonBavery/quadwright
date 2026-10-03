@@ -7,12 +7,14 @@ height model ships unless it beats this baseline on unseen campuses.
 
 from __future__ import annotations
 
+from typing import Any
+
 from quadwright.config import Heights
 from quadwright.model import HeightSource
 
 
 def resolve_height(
-    tags: dict[str, str], name: str | None, heights: Heights
+    tags: dict[str, Any], name: str | None, heights: Heights
 ) -> tuple[float, HeightSource]:
     """Pick a building's height in meters and say where it came from.
 
@@ -40,14 +42,16 @@ def resolve_height(
     if name is not None and name in heights.overrides:
         return heights.overrides[name], "override"
 
-    if "height" in tags:
-        parsed = _parse_height_tag(tags["height"])
+    height_tag = tags.get("height")
+    if height_tag is not None:
+        parsed = _parse_height_tag(height_tag)
         if parsed is not None:
             return parsed, "tag"
 
-    if "building:levels" in tags:
+    levels_tag = tags.get("building:levels")
+    if levels_tag is not None:
         try:
-            levels = float(tags["building:levels"])
+            levels = float(levels_tag)
         except ValueError:
             levels = None
         if levels is not None:
@@ -56,13 +60,16 @@ def resolve_height(
     return heights.default_m, "default"
 
 
-def _parse_height_tag(value: str) -> float | None:
+def _parse_height_tag(value: Any) -> float | None:
     """Parse an OSM `height` tag value (e.g. "12", "12.5", "12 m") to meters.
 
     Returns None for forms this simple baseline doesn't handle (e.g. the
-    approximate "~15" or imperial "15'"), so callers can fall through to
-    the next rule instead of crashing on messy real-world tag data.
+    approximate "~15" or imperial "15'") or a non-string value, so callers
+    can fall through to the next rule instead of crashing on messy
+    real-world tag data.
     """
+    if not isinstance(value, str):
+        return None
     text = value.strip().removesuffix("m").strip()
     try:
         return float(text)

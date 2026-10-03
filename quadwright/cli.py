@@ -9,8 +9,10 @@ from pydantic import ValidationError
 
 from quadwright import __version__
 from quadwright.config import load_config
-from quadwright.geo.footprints import load_buildings
+from quadwright.geo.footprints import campus_bbox_local, load_buildings
 from quadwright.geo.render import render_footprints
+from quadwright.mesh.extrude import build_base_plate, extrude_box
+from quadwright.mesh.scale import compute_scale_mm_per_m, to_model_mm
 from quadwright.sources.osm import fetch_buildings
 
 app = typer.Typer(help="Quadwright: wooden campus kits from open map data.", no_args_is_help=True)
@@ -81,8 +83,38 @@ def audit(config: Path = ConfigArg) -> None:
 
 @app.command()
 def build(config: Path = ConfigArg) -> None:
-    """Run the full pipeline and write the kit. [week 4]"""
-    _planned(4)
+    """Extrude flat-roofed part STLs and the base plate (FR-06).
+
+    Tiers/joinery/kit.json come later.
+    """
+    cfg = load_config(config)
+    raw_path = Path("data/raw") / cfg.campus.name / "buildings.geojson"
+    if not raw_path.exists():
+        typer.secho(f"No cached data for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
+        typer.echo(f"Run first: quadwright fetch {config}", err=True)
+        raise typer.Exit(code=1)
+
+    buildings = load_buildings(raw_path, cfg.campus.bbox, cfg.heights)
+    campus_outline_m = campus_bbox_local(cfg.campus.bbox)
+    min_x_m, min_y_m, max_x_m, max_y_m = campus_outline_m.bounds
+    origin_m = (min_x_m, min_y_m)
+    scale_mm_per_m = compute_scale_mm_per_m(cfg.scale, max_x_m - min_x_m, max_y_m - min_y_m)
+
+    out_dir = Path("outputs") / cfg.campus.name
+    parts_dir = out_dir / "parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    for building in buildings:
+        footprint_mm = to_model_mm(building.footprint, origin_m, scale_mm_per_m)
+        height_mm = building.height_m * scale_mm_per_m * cfg.scale.vertical_exaggeration
+        part_mesh = extrude_box(footprint_mm, height_mm)
+        safe_id = building.osm_id.replace("/", "-")
+        part_mesh.export(parts_dir / f"{safe_id}.stl")
+
+    base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
+    build_base_plate(base_outline_mm).export(out_dir / "base.stl")
+
+    typer.secho(f"Wrote {len(buildings)} part(s) and base.stl to {out_dir}", fg=typer.colors.GREEN)
 
 
 @app.command()

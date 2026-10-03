@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pyproj
-from shapely.geometry import shape
+from shapely.geometry import Polygon, box, shape
 from shapely.ops import transform
 
 from quadwright.config import Heights
@@ -47,6 +47,16 @@ def load_buildings(
             )
         )
     return buildings
+
+
+def campus_bbox_local(bbox: tuple[float, float, float, float]) -> Polygon:
+    """Reproject the campus bounding box into the same local UTM meters as buildings.
+
+    This is the campus outline the base plate is cut from (FR-06), so it
+    must share buildings' coordinate system -- same `_utm_projector` call.
+    """
+    west, south, east, north = bbox
+    return transform(_utm_projector(bbox), box(west, south, east, north))
 
 
 def _utm_projector(bbox: tuple[float, float, float, float]):
