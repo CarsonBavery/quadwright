@@ -22,28 +22,34 @@ def assign_tier(
     `name` is checked against `tiers.overrides` first (see
     configs/campuses/*.yaml, e.g. `tiers.overrides: {"Clock Tower": 3}`) --
     a human already decided that building's tier, so it always wins.
+    HERO only ever comes from an override; there's no automatic rule for
+    "hand-tuned landmark".
 
-    TODO(you): implement the threshold logic for everything else, using
-    `tiers.merge_below_tool_diameters` and `tiers.rotate_above_tool_diameters`
-    (see quadwright.config.Tiers) against `tool_diameter_mm`. The open
-    design question: which measurement should drive which threshold?
-
+    Otherwise, two independent thresholds (both in tool diameters):
     - `merge_below_tool_diameters`: a footprint only slightly bigger than
       the tool can't be milled usefully on its own. The *longest* side
-      being small doesn't save it if it's a sliver -- use the footprint's
-      narrowest dimension (its tightest bounding-box side) compared
-      against `tool_diameter_mm * tiers.merge_below_tool_diameters`.
-    - `rotate_above_tool_diameters`: ROTATED parts get extra setups to
-      machine their sides (see Setup.face_up: "north"/"south"/"east"/
+      being small doesn't save it if it's a sliver, so this compares the
+      footprint's narrowest bounding-box side against
+      `tool_diameter_mm * tiers.merge_below_tool_diameters`.
+    - `rotate_above_tool_diameters`: ROTATED parts get extra machining
+      setups for their sides (see Setup.face_up: "north"/"south"/"east"/
       "west"), which is a *height* problem -- a block too tall to reach
-      its lower side details from one orientation. Compare `height_mm`
+      its lower side details from one orientation. Compares `height_mm`
       against `tool_diameter_mm * tiers.rotate_above_tool_diameters`.
-    - Anything that clears the rotate threshold is ROTATED; anything that
-      doesn't clear the merge threshold is MERGE; otherwise it's BLOCK.
-    - HERO only ever comes from `tiers.overrides` -- there's no automatic
-      rule for it, hand-tuned landmarks are a human judgment call.
+
+    Clearing the rotate threshold wins over the merge check (a part can be
+    both "too small" and "too tall", e.g. a narrow spire -- ROTATED is the
+    more actionable signal), otherwise falling short of the merge
+    threshold means MERGE, and anything left over is a plain BLOCK.
     """
     if name is not None and name in tiers.overrides:
         return Tier(tiers.overrides[name])
 
-    raise NotImplementedError("assign_tier: implement the threshold logic")
+    min_x, min_y, max_x, max_y = footprint_mm.bounds
+    narrowest_side_mm = min(max_x - min_x, max_y - min_y)
+
+    if height_mm > tool_diameter_mm * tiers.rotate_above_tool_diameters:
+        return Tier.ROTATED
+    if narrowest_side_mm < tool_diameter_mm * tiers.merge_below_tool_diameters:
+        return Tier.MERGE
+    return Tier.BLOCK
