@@ -3,7 +3,7 @@
 import pytest
 
 from quadwright.config import Heights
-from quadwright.geo.heights import resolve_height
+from quadwright.resolve.heights import resolve_height
 
 HEIGHTS = Heights(default_m=12.0, meters_per_level=3.5, overrides={"Old Main": 28.0})
 

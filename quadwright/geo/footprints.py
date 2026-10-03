@@ -10,8 +10,8 @@ from shapely.geometry import shape
 from shapely.ops import transform
 
 from quadwright.config import Heights
-from quadwright.geo.heights import resolve_height
 from quadwright.model import Building
+from quadwright.resolve.heights import resolve_height
 
 
 def load_buildings(
