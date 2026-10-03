@@ -32,7 +32,11 @@ def test_fr03_reprojects_to_local_meters():
         assert maxy - miny < 500
 
 
-def test_fr03_osm_id_includes_element_type():
+def test_fr03_osm_id_is_unique_per_building():
+    # Regression: osmnx 2.x's GeoJSON export names these columns "element"/
+    # "id" (1.x used "element_type"/"osmid"); reading the wrong keys made
+    # every real building collapse onto the same fallback osm_id ("way/"),
+    # invisible until something (M3's build command) relied on uniqueness.
     buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     assert {b.osm_id for b in buildings} == {"way/100", "way/101"}
 

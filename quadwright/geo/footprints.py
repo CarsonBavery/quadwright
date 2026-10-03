@@ -34,7 +34,9 @@ def load_buildings(
         if geom.geom_type not in ("Polygon", "MultiPolygon"):
             continue  # OSM tag queries can also return points/lines; footprints only
         props = feature.get("properties", {})
-        osm_id = f"{props.get('element_type', 'way')}/{props.get('osmid', feature.get('id', ''))}"
+        # osmnx's GeoDataFrame index columns are "element"/"id" as of osmnx 2.x
+        # (renamed from "element_type"/"osmid" in osmnx 1.x).
+        osm_id = f"{props.get('element', 'way')}/{props.get('id', '')}"
         name = props.get("name")
         height_m, height_source = resolve_height(props, name, heights)
         buildings.append(

@@ -13,7 +13,8 @@ AREA = CampusArea(name="example-university", bbox=(-80.000, 35.000, -79.990, 35.
 def _fake_gdf() -> gpd.GeoDataFrame:
     corners = [(-79.998, 35.004), (-79.997, 35.004), (-79.997, 35.005), (-79.998, 35.005)]
     square = Polygon(corners)
-    index = pd.MultiIndex.from_tuples([("way", 100)], names=["element_type", "osmid"])
+    # osmnx 2.x names these index levels "element"/"id" (was "element_type"/"osmid" in 1.x)
+    index = pd.MultiIndex.from_tuples([("way", 100)], names=["element", "id"])
     data = {"building": ["yes"], "geometry": [square]}
     return gpd.GeoDataFrame(data, index=index, crs="EPSG:4326")
 
