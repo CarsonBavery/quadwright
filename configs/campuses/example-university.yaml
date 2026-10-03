@@ -4,6 +4,13 @@
 campus:
   name: example-university
   bbox: [-80.000, 35.000, -79.990, 35.008]   # west, south, east, north
+  # boundary_query: "Your University Name"   # Nominatim place name; filters
+  #   buildings to the real campus polygon, since bbox is a rectangle and
+  #   always includes nearby off-campus buildings too (FR-09). Omit for a
+  #   synthetic campus with no real-world OSM entity, like this example.
+  # include_outside_boundary: ["Old Gym"]    # names to keep even though
+  #   they fall outside boundary_query's polygon (historic=* buildings in
+  #   OSM are kept automatically and don't need listing here)
 
 scale:
   target_size_mm: [450, 300]   # or ratio: 2500, never both

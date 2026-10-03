@@ -1,8 +1,13 @@
-# UNC Charlotte main campus. bbox from OSM/Nominatim via `ox.geocode_to_gdf`.
+# UNC Charlotte main campus. bbox from OSM/Nominatim via `ox.geocode_to_gdf`
+# (its envelope -- the campus's real shape only covers ~64% of that
+# rectangle, so boundary_query below is what actually scopes buildings).
 
 campus:
   name: unc-charlotte
   bbox: [-80.74675, 35.296975, -80.721494, 35.315842]   # west, south, east, north
+  boundary_query: "UNC Charlotte"   # drops off-campus buildings the bbox rectangle sweeps in
+  include_outside_boundary: []   # add real-but-technically-outside places here as you find them,
+    # e.g. "Jamil Niner Student Pantry" -- a real campus service just outside the strict polygon
 
 scale:
   target_size_mm: [450, 300]
