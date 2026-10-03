@@ -33,7 +33,8 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M1 Footprints | Done |
 | M2 Heights | Done |
 | M3 First mesh | Done |
-| M4 Parts & joinery | Planned |
+| M4 Parts (merge touching buildings, assign tiers) | Done |
+| M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
 
 ## Data attribution
 
