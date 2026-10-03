@@ -61,3 +61,55 @@ def test_fr02_raises_if_network_called_unexpectedly(tmp_path, monkeypatch):
     path = osm.fetch_buildings(AREA, cache_dir=tmp_path)
 
     assert path == cached
+
+
+AREA_WITH_BOUNDARY = CampusArea(
+    name="unc-charlotte", bbox=(-80.747, 35.297, -80.721, 35.316), boundary_query="UNC Charlotte"
+)
+
+
+def _fake_boundary_gdf() -> gpd.GeoDataFrame:
+    corners = [(-80.747, 35.297), (-80.721, 35.297), (-80.721, 35.316), (-80.747, 35.316)]
+    return gpd.GeoDataFrame(
+        {"display_name": ["UNC Charlotte"]}, geometry=[Polygon(corners)], crs="EPSG:4326"
+    )
+
+
+def test_fr09_fetch_campus_boundary_skips_the_network_without_boundary_query(tmp_path, monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("should not be called when boundary_query isn't set")
+
+    monkeypatch.setattr(osm.ox, "geocode_to_gdf", boom)
+
+    assert osm.fetch_campus_boundary(AREA, cache_dir=tmp_path) is None
+
+
+def test_fr09_fetch_campus_boundary_fetches_and_caches(tmp_path, monkeypatch):
+    calls: list[int] = []
+
+    def fake(*_args, **_kwargs):
+        calls.append(1)
+        return _fake_boundary_gdf()
+
+    monkeypatch.setattr(osm.ox, "geocode_to_gdf", fake)
+
+    path = osm.fetch_campus_boundary(AREA_WITH_BOUNDARY, cache_dir=tmp_path)
+
+    assert path == tmp_path / "unc-charlotte" / "boundary.geojson"
+    assert path.exists()
+    assert len(calls) == 1
+
+
+def test_fr09_second_boundary_fetch_is_a_cache_hit(tmp_path, monkeypatch):
+    calls: list[int] = []
+
+    def fake(*_args, **_kwargs):
+        calls.append(1)
+        return _fake_boundary_gdf()
+
+    monkeypatch.setattr(osm.ox, "geocode_to_gdf", fake)
+
+    osm.fetch_campus_boundary(AREA_WITH_BOUNDARY, cache_dir=tmp_path)
+    osm.fetch_campus_boundary(AREA_WITH_BOUNDARY, cache_dir=tmp_path)
+
+    assert len(calls) == 1  # second call must not hit the (mocked) network again

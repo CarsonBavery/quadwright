@@ -1,4 +1,4 @@
-"""Fetch and cache OSM building footprints via Overpass (FR-02)."""
+"""Fetch and cache OSM building footprints and campus boundaries (FR-02, FR-09)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,31 @@ def fetch_buildings(area: CampusArea, cache_dir: str | Path = "data/raw") -> Pat
         return cache_path
 
     gdf = ox.features_from_bbox(area.bbox, tags={"building": True})
-    gdf = gdf.reset_index()  # keep element_type/osmid as columns, not just the index
+    gdf = gdf.reset_index()  # keep element/id as columns, not just the index
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(cache_path, driver="GeoJSON")
+    return cache_path
+
+
+def fetch_campus_boundary(area: CampusArea, cache_dir: str | Path = "data/raw") -> Path | None:
+    """Download and cache the campus's real OSM boundary polygon, if configured.
+
+    `area.bbox` is always a rectangle, so it inevitably includes whatever's
+    nearby -- off-campus housing, gas stations, restaurants. The boundary
+    polygon is what `load_buildings` filters against (FR-09) to keep only
+    buildings actually on campus. Returns None without touching the network
+    when `area.boundary_query` isn't set (e.g. a synthetic campus with no
+    real-world OSM entity to look up).
+    """
+    if area.boundary_query is None:
+        return None
+
+    cache_path = Path(cache_dir) / area.name / "boundary.geojson"
+    if cache_path.exists():
+        return cache_path
+
+    gdf = ox.geocode_to_gdf(area.boundary_query)
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     gdf.to_file(cache_path, driver="GeoJSON")

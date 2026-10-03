@@ -24,6 +24,26 @@ class CampusArea(_Strict):
 
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$", description="URL-safe slug")
     bbox: tuple[float, float, float, float] = Field(description="west, south, east, north")
+    boundary_query: str | None = Field(
+        default=None,
+        description=(
+            "Nominatim place name (e.g. 'UNC Charlotte') to fetch the campus's real "
+            "OSM boundary polygon. bbox is a rectangle and always includes nearby "
+            "off-campus buildings (stores, off-campus housing); when set, only "
+            "buildings inside this polygon are kept (FR-09). Leave unset for a "
+            "synthetic campus with no real-world OSM entity -- then bbox alone decides."
+        ),
+    )
+    include_outside_boundary: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Building names to always include even though they fall outside "
+            "boundary_query's polygon -- for real but technically-off-campus places "
+            "worth keeping (a historic building OSM doesn't tag as historic, a "
+            "campus-run service just across the boundary line). Buildings tagged "
+            "historic=* in OSM are included automatically and don't need listing here."
+        ),
+    )
 
     @field_validator("bbox")
     @classmethod
