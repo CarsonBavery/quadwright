@@ -36,7 +36,13 @@ def compute_scale_mm_per_m(scale: Scale, bbox_width_m: float, bbox_height_m: flo
     `vertical_exaggeration` does NOT belong here -- that only scales
     height, applied separately where height_mm gets computed.
     """
-    raise NotImplementedError("compute_scale_mm_per_m: implement the scale math")
+    if scale.ratio is not None:
+        return 1000 / scale.ratio
+
+    target_width_mm, target_height_mm = scale.target_size_mm
+    width_limited_factor = target_width_mm / bbox_width_m
+    height_limited_factor = target_height_mm / bbox_height_m
+    return min(width_limited_factor, height_limited_factor)
 
 
 def to_model_mm(
