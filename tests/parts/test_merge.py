@@ -4,7 +4,7 @@ from shapely.geometry import Polygon
 
 from quadwright.config import Tiers
 from quadwright.model import Building, Tier
-from quadwright.parts.merge import build_parts, group_touching_buildings
+from quadwright.parts.merge import build_parts, group_touching_buildings, merge_isolated_small_parts
 
 
 def _square(
@@ -40,7 +40,7 @@ def test_fr07_transitive_touching_chain_merges_all():
 
 TIERS = Tiers(
     overrides={"Test Building": 1}
-)  # BLOCK, sidesteps assign_tier's unfinished thresholds
+)  # BLOCK, isolates these tests from assign_tier's own rules
 
 
 def test_fr07_build_parts_merges_footprints_and_takes_the_tallest_height():
@@ -69,3 +69,70 @@ def test_fr07_build_parts_assigns_sequential_ids():
     parts = build_parts([a, b], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS)
 
     assert {p.id for p in parts} == {"part-0000", "part-0001"}
+
+
+TOOL_DIAMETER_MM = 3.175
+DEFAULT_TIERS = Tiers()  # merge_below_tool_diameters=3 -> 9.525mm threshold at this tool size
+
+
+def _footprints_and_heights(buildings: list[Building], height_mm: float = 30.0):
+    footprints_mm = {b.osm_id: b.footprint for b in buildings}
+    heights_mm = {b.osm_id: height_mm for b in buildings}
+    return footprints_mm, heights_mm
+
+
+def test_fr08_merges_isolated_small_neighbors_within_search_radius():
+    # Each 5x5 square alone is tier MERGE (narrowest side 5 < 9.525), but
+    # diagonally offset so their union's bounding box is 11x11 -- clearing
+    # the threshold once combined. The gap between them (~1.4mm) is well
+    # inside the 9.525mm search radius.
+    a = _square("way/1", 0, 0, size=5)
+    b = _square("way/2", 6, 6, size=5)
+    footprints_mm, heights_mm = _footprints_and_heights([a, b])
+
+    groups = merge_isolated_small_parts(
+        [[a], [b]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS
+    )
+
+    assert len(groups) == 1
+    assert {bld.osm_id for bld in groups[0]} == {"way/1", "way/2"}
+
+
+def test_fr08_does_not_merge_across_a_gap_beyond_the_search_radius():
+    a = _square("way/1", 0, 0, size=5)
+    b = _square("way/2", 1000, 1000, size=5)  # far beyond the 9.525mm search radius
+    footprints_mm, heights_mm = _footprints_and_heights([a, b])
+
+    groups = merge_isolated_small_parts(
+        [[a], [b]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS
+    )
+
+    assert sorted(len(g) for g in groups) == [1, 1]
+
+
+def test_fr08_never_absorbs_into_a_hero_neighbor():
+    # "Landmark" is tiny too, but a human already decided it's HERO -- it
+    # must keep its own identity even though it's the only nearby group.
+    tiny = _square("way/1", 0, 0, size=5)
+    landmark = _square("way/2", 6, 6, size=5, name="Landmark")
+    footprints_mm, heights_mm = _footprints_and_heights([tiny, landmark])
+    tiers = Tiers(overrides={"Landmark": 3})
+
+    groups = merge_isolated_small_parts(
+        [[tiny], [landmark]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, tiers
+    )
+
+    assert sorted(len(g) for g in groups) == [1, 1]
+
+
+def test_fr07_build_parts_end_to_end_rescues_isolated_small_buildings():
+    # No tier overrides here -- exercises the real assign_tier thresholds
+    # together with both merge passes, the way `build` actually calls it.
+    a = _square("way/1", 0, 0, size=5)
+    b = _square("way/2", 6, 6, size=5)
+    footprints_mm, heights_mm = _footprints_and_heights([a, b])
+
+    parts = build_parts([a, b], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS)
+
+    assert len(parts) == 1
+    assert parts[0].tier == Tier.BLOCK
