@@ -35,5 +35,6 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M1 Footprints (fetch, normalize, preview; PR merged).
-Next: M2 Heights (rule-based height resolution, FR-05).
+Week: 1. Last milestone: M3 First mesh (scale conversion, box extrusion,
+base plate, `build` CLI command, FR-06; PRs merged).
+Next: M4 Parts & joinery (merge neighboring buildings, integral tenons).

@@ -31,8 +31,9 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | --- | --- |
 | M0 Setup: CI green | Done |
 | M1 Footprints | Done |
-| M2 Heights | In progress |
-| M3 First mesh | Planned |
+| M2 Heights | Done |
+| M3 First mesh | Done |
+| M4 Parts & joinery | Planned |
 
 ## Data attribution
 
