@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from quadwright.config import Heights
-from quadwright.geo.footprints import load_buildings
+from quadwright.geo.footprints import campus_bbox_local, load_buildings
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "sample_buildings.geojson"
 EXAMPLE_BBOX = (-80.000, 35.000, -79.990, 35.008)
@@ -41,3 +41,11 @@ def test_fr05_defaults_height_when_fixture_has_no_tags():
     buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
     assert {b.height_source for b in buildings} == {"default"}
     assert {b.height_m for b in buildings} == {HEIGHTS.default_m}
+
+
+def test_fr06_campus_bbox_local_matches_building_coordinate_system():
+    buildings = load_buildings(FIXTURE, EXAMPLE_BBOX, HEIGHTS)
+    outline = campus_bbox_local(EXAMPLE_BBOX)
+    # Every fixture building should land inside the campus's own outline
+    # once both are reprojected into the same local UTM meters.
+    assert all(outline.contains(b.footprint) for b in buildings)
