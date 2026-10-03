@@ -7,10 +7,13 @@ is in millimeters at model scale, per CLAUDE.md's naming convention
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from shapely import affinity
 from shapely.geometry import Polygon
 
 from quadwright.config import Scale
+from quadwright.model import Building
 
 
 def compute_scale_mm_per_m(scale: Scale, bbox_width_m: float, bbox_height_m: float) -> float:
@@ -52,3 +55,22 @@ def to_model_mm(
     origin_x_m, origin_y_m = origin_m
     shifted = affinity.translate(footprint_m, xoff=-origin_x_m, yoff=-origin_y_m)
     return affinity.scale(shifted, xfact=scale_mm_per_m, yfact=scale_mm_per_m, origin=(0, 0))
+
+
+def scale_buildings(
+    buildings: Iterable[Building],
+    origin_m: tuple[float, float],
+    scale_mm_per_m: float,
+    vertical_exaggeration: float,
+) -> tuple[dict[str, Polygon], dict[str, float]]:
+    """Convert every building's footprint and height into model mm, keyed by osm_id.
+
+    Both results share the campus-mm coordinate system (same `origin_m`),
+    so a part built from these footprints lines up with the base plate
+    (`campus_bbox_local` + `to_model_mm` with the same origin and scale).
+    """
+    footprints_mm = {
+        b.osm_id: to_model_mm(b.footprint, origin_m, scale_mm_per_m) for b in buildings
+    }
+    heights_mm = {b.osm_id: b.height_m * scale_mm_per_m * vertical_exaggeration for b in buildings}
+    return footprints_mm, heights_mm
