@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import trimesh
+from shapely.geometry import MultiPolygon, Polygon
 
 from quadwright.resolve.terrain import HeightGrid
 
@@ -23,9 +24,9 @@ def build_terrain_plate(
 ) -> trimesh.Trimesh:
     """Build the terrain base plate as a solid mesh, in model mm.
 
-    Returns the mesh together with a `ground_height_mm(x_mm, y_mm)`
-    function closed over this same grid -- callers (parts placement) need
-    it to sit each part at its local ground height instead of a flat z.
+    To place a part on this same terrain (rather than at a flat z), build
+    a `GroundHeightLookup` with the same grid/scale/exaggeration/thickness
+    and call its `min_height_under()`.
     """
     n_rows, n_cols = grid.shape
     z_min_m = np.nanmin(grid.heights_m)
@@ -77,6 +78,31 @@ class GroundHeightLookup:
         return (
             elevation_m - self._z_min_m
         ) * self._scale_mm_per_m * self._vertical_exaggeration + self._base_thickness_mm
+
+    def min_height_under(
+        self, footprint_local: Polygon | MultiPolygon, position_on_base: tuple[float, float]
+    ) -> float:
+        """The lowest terrain height anywhere under a part's full footprint, in model mm.
+
+        Sampling ground height at only one point (e.g. a part's own local
+        origin) lets a flat-bottomed part "float": its bottom touches
+        ground at that one point while hovering above the (sloped)
+        terrain everywhere else under it. This samples every footprint
+        vertex instead and returns the lowest, so the part's bottom
+        always rests on or slightly into the terrain -- never above it.
+        """
+        offset_x, offset_y = position_on_base
+        polygons = (
+            footprint_local.geoms
+            if isinstance(footprint_local, MultiPolygon)
+            else [footprint_local]
+        )
+        heights = [
+            self(x + offset_x, y + offset_y)
+            for polygon in polygons
+            for x, y in polygon.exterior.coords
+        ]
+        return min(heights)
 
 
 def _grid_surface(
