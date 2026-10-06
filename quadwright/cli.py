@@ -162,7 +162,13 @@ def _build_base(
         raise typer.Exit(code=1)
 
     if lidar_paths:
-        grid = build_height_grid(lidar_paths, cfg.campus.bbox)
+        # A grid cell finer than one tool-diameter (in real-world terms,
+        # at this model's scale) buys nothing -- the mill can't resolve
+        # it anyway, and it would just bloat the mesh. At unc-charlotte's
+        # scale this is ~22m vs. the naive 2m default (a ~100x fewer
+        # cells, 322MB -> ~3MB of actual STL).
+        cell_size_m = cfg.tool.diameter_mm / scale_mm_per_m
+        grid = build_height_grid(lidar_paths, cfg.campus.bbox, cell_size_m)
         return build_terrain_plate(
             grid, scale_mm_per_m, cfg.scale.vertical_exaggeration, BASE_PLATE_THICKNESS_MM
         )
