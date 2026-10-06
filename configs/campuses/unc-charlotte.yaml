@@ -8,6 +8,7 @@ campus:
   boundary_query: "UNC Charlotte"   # drops off-campus buildings the bbox rectangle sweeps in
   include_outside_boundary: []   # add real-but-technically-outside places here as you find them,
     # e.g. "Jamil Niner Student Pantry" -- a real campus service just outside the strict polygon
+  lidar_project: "NC_Phase_4_CentralWestNC_GEIGER_A16/NC_Phase4_Mecklenburg_2016"   # real 2016 ground-return LIDAR
 
 scale:
   target_size_mm: [450, 300]

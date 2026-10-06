@@ -44,6 +44,19 @@ class CampusArea(_Strict):
             "historic=* in OSM are included automatically and don't need listing here."
         ),
     )
+    lidar_project: str | None = Field(
+        default=None,
+        description=(
+            "USGS 3DEP LIDAR project path (e.g. "
+            "'NC_Phase_4_CentralWestNC_GEIGER_A16/NC_Phase4_Mecklenburg_2016'), used to "
+            "fetch real ground-elevation point cloud tiles for a contoured terrain base "
+            "plate (FR-10) instead of a flat slab. Find it by browsing "
+            "prd-tnm.s3.amazonaws.com (?list-type=2&prefix=StagedProducts/Elevation/LPC/"
+            "Projects/) for a project covering the campus -- there's no reachable bbox lookup "
+            "API, so this is a one-time manual find per campus. Leave unset for a flat "
+            "base plate (today's behavior)."
+        ),
+    )
 
     @field_validator("bbox")
     @classmethod

@@ -4,17 +4,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import trimesh
 import typer
 from pydantic import ValidationError
+from shapely.geometry import Polygon
 
 from quadwright import __version__
 from quadwright.config import CampusConfig, load_config
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
 from quadwright.geo.render import render_footprints
-from quadwright.mesh.extrude import build_base_plate, extrude_box
+from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
+from quadwright.mesh.terrain import build_terrain_plate
 from quadwright.model import Building
 from quadwright.parts.merge import build_parts
+from quadwright.resolve.terrain import build_height_grid
+from quadwright.sources.lidar import fetch_campus_lidar
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
 
 app = typer.Typer(help="Quadwright: wooden campus kits from open map data.", no_args_is_help=True)
@@ -55,7 +60,7 @@ def _planned(week: int) -> None:
 
 @app.command()
 def fetch(config: Path = ConfigArg) -> None:
-    """Download and cache OSM building data and the campus boundary (FR-02, FR-09)."""
+    """Download and cache OSM buildings, the campus boundary, and LIDAR (FR-02, FR-09, FR-10)."""
     cfg = load_config(config)
     path = fetch_buildings(cfg.campus)
     typer.secho(f"Cached: {path}", fg=typer.colors.GREEN)
@@ -63,6 +68,13 @@ def fetch(config: Path = ConfigArg) -> None:
     boundary_path = fetch_campus_boundary(cfg.campus)
     if boundary_path is not None:
         typer.secho(f"Cached: {boundary_path}", fg=typer.colors.GREEN)
+
+    lidar_paths = fetch_campus_lidar(cfg.campus)
+    if lidar_paths:
+        typer.secho(
+            f"Cached: {len(lidar_paths)} LIDAR tile(s) in {lidar_paths[0].parent}",
+            fg=typer.colors.GREEN,
+        )
 
 
 def _load_campus_buildings(cfg: CampusConfig, config_path: Path) -> list[Building]:
@@ -98,7 +110,12 @@ def audit(config: Path = ConfigArg) -> None:
 
 @app.command()
 def build(config: Path = ConfigArg) -> None:
-    """Extrude merged, tiered part STLs and the base plate (FR-06, FR-07, FR-09).
+    """Extrude merged, tiered part STLs and the base plate (FR-06, FR-07, FR-09, FR-10).
+
+    The base plate is a contoured terrain block when campus.lidar_project
+    is set and cached (run `fetch` first), a flat slab otherwise. Either
+    way, part STLs stay in block-local coordinates (ADR-0003) -- terrain
+    changes what they sit on, not the machining files themselves.
 
     Joinery/kit.json come later.
     """
@@ -121,13 +138,43 @@ def build(config: Path = ConfigArg) -> None:
     for part in parts:
         extrude_box(part.footprint_local, part.height_mm).export(parts_dir / f"{part.id}.stl")
 
-    base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
-    build_base_plate(base_outline_mm).export(out_dir / "base.stl")
+    base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m)
+    base_mesh.export(out_dir / "base.stl")
 
     typer.secho(
         f"Wrote {len(parts)} part(s) from {len(buildings)} building(s) and base.stl to {out_dir}",
         fg=typer.colors.GREEN,
     )
+
+
+def _build_base(
+    cfg: CampusConfig,
+    campus_outline_m: Polygon,
+    origin_m: tuple[float, float],
+    scale_mm_per_m: float,
+) -> trimesh.Trimesh:
+    """Build the base plate: a terrain block if LIDAR is cached, a flat slab otherwise."""
+    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
+    lidar_paths = sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
+    if cfg.campus.lidar_project is not None and not lidar_paths:
+        typer.secho(f"No cached LIDAR for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
+        typer.echo("Run first: quadwright fetch", err=True)
+        raise typer.Exit(code=1)
+
+    if lidar_paths:
+        # A grid cell finer than one tool-diameter (in real-world terms,
+        # at this model's scale) buys nothing -- the mill can't resolve
+        # it anyway, and it would just bloat the mesh. At unc-charlotte's
+        # scale this is ~22m vs. the naive 2m default (a ~100x fewer
+        # cells, 322MB -> ~3MB of actual STL).
+        cell_size_m = cfg.tool.diameter_mm / scale_mm_per_m
+        grid = build_height_grid(lidar_paths, cfg.campus.bbox, cell_size_m)
+        return build_terrain_plate(
+            grid, scale_mm_per_m, cfg.scale.vertical_exaggeration, BASE_PLATE_THICKNESS_MM
+        )
+
+    base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
+    return build_base_plate(base_outline_mm)
 
 
 @app.command()

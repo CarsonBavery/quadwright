@@ -35,8 +35,8 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M4 Parts (group_touching_buildings, build_parts,
-assign_tier, FR-07; PRs merged).
-Next: M5 Joinery (tenons & pockets) -- blocked on a measured
+Week: 1. Last milestone: M7 Terrain (real USGS 3DEP LIDAR -> contoured
+base plate, FR-10; also M6 campus boundary filtering, FR-09).
+Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
 `clearance_mm` from the (not-yet-built) coupon test; pick a direction
 that doesn't guess fabrication data.
