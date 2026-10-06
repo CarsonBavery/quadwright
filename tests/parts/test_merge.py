@@ -60,6 +60,17 @@ def test_fr07_build_parts_merges_footprints_and_takes_the_tallest_height():
     assert part.footprint_local.bounds[:2] == (0.0, 0.0)  # translated to its own local origin
 
 
+def test_fr12_build_parts_uses_the_configured_species():
+    a = _square("way/1", 0, 0, name="Test Building")
+    footprints_mm, heights_mm = {"way/1": a.footprint}, {"way/1": 10.0}
+
+    parts = build_parts(
+        [a], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS, species="walnut"
+    )
+
+    assert parts[0].species == "walnut"
+
+
 def test_fr07_build_parts_assigns_sequential_ids():
     a = _square("way/1", 0, 0, name="Test Building")
     b = _square("way/2", 1000, 1000, name="Test Building")
