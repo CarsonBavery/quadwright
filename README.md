@@ -34,9 +34,14 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M2 Heights | Done |
 | M3 First mesh | Done |
 | M4 Parts (merge touching buildings, assign tiers) | Done |
+| M6 Campus boundary filter (real OSM polygon, not just bbox) | Done |
+| M7 Terrain (contoured base plate from real LIDAR) | Done |
 | M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
 
 ## Data attribution
 
 Map data © OpenStreetMap contributors, available under the
 [Open Database License](https://www.openstreetmap.org/copyright).
+
+Elevation data (when `campus.lidar_project` is set) is real LIDAR point
+cloud data from the USGS 3D Elevation Program (3DEP), public domain.

@@ -103,12 +103,21 @@ def campus_bbox_local(bbox: tuple[float, float, float, float]) -> Polygon:
     return transform(_utm_projector(bbox), box(west, south, east, north))
 
 
-def _utm_projector(bbox: tuple[float, float, float, float]):
-    """Build a WGS84 -> local UTM transform function for the campus bounding box."""
+def utm_crs_for_bbox(bbox: tuple[float, float, float, float]) -> str:
+    """Pick a local UTM CRS (as a proj4 string) for a campus bounding box.
+
+    Shared by buildings, the campus outline, and (FR-10) terrain, so
+    everything lands in the same local, metric coordinate system
+    regardless of which UTM zone the campus actually falls in.
+    """
     west, south, east, north = bbox
     lon, lat = (west + east) / 2, (south + north) / 2
     zone = int((lon + 180) / 6) + 1
     hemisphere = "north" if lat >= 0 else "south"
-    utm_crs = f"+proj=utm +zone={zone} +{hemisphere} +datum=WGS84 +units=m +no_defs"
-    transformer = pyproj.Transformer.from_crs("EPSG:4326", utm_crs, always_xy=True)
+    return f"+proj=utm +zone={zone} +{hemisphere} +datum=WGS84 +units=m +no_defs"
+
+
+def _utm_projector(bbox: tuple[float, float, float, float]):
+    """Build a WGS84 -> local UTM transform function for the campus bounding box."""
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", utm_crs_for_bbox(bbox), always_xy=True)
     return transformer.transform
