@@ -37,6 +37,7 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M6 Campus boundary filter (real OSM polygon, not just bbox) | Done |
 | M7 Terrain (contoured base plate from real LIDAR) | Done |
 | M8 Audit (height data quality report) | Done |
+| M9 Tier report (parts-by-tier summary output) | Done |
 | M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
 
 ## Data attribution

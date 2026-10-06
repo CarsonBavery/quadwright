@@ -35,7 +35,8 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M8 Audit (height data quality report, FR-11).
+Week: 1. Last milestone: M9 Tier report (parts-by-tier summary output,
+FR-12; also fixed build_parts silently ignoring materials.buildings).
 Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
 `clearance_mm` from the (not-yet-built) coupon test; pick a direction
 that doesn't guess fabrication data.
