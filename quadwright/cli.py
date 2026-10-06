@@ -19,6 +19,7 @@ from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_mo
 from quadwright.mesh.terrain import build_terrain_plate
 from quadwright.model import Building
 from quadwright.parts.merge import build_parts
+from quadwright.parts.report import build_tier_report
 from quadwright.resolve.terrain import build_height_grid
 from quadwright.sources.lidar import fetch_campus_lidar
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
@@ -140,7 +141,8 @@ def build(config: Path = ConfigArg) -> None:
     The base plate is a contoured terrain block when campus.lidar_project
     is set and cached (run `fetch` first), a flat slab otherwise. Either
     way, part STLs stay in block-local coordinates (ADR-0003) -- terrain
-    changes what they sit on, not the machining files themselves.
+    changes what they sit on, not the machining files themselves. Also
+    writes tier_report.txt (FR-12) when that's in the config's `outputs`.
 
     Joinery/kit.json come later.
     """
@@ -154,7 +156,14 @@ def build(config: Path = ConfigArg) -> None:
     footprints_mm, heights_mm = scale_buildings(
         buildings, origin_m, scale_mm_per_m, cfg.scale.vertical_exaggeration
     )
-    parts = build_parts(buildings, footprints_mm, heights_mm, cfg.tool.diameter_mm, cfg.tiers)
+    parts = build_parts(
+        buildings,
+        footprints_mm,
+        heights_mm,
+        cfg.tool.diameter_mm,
+        cfg.tiers,
+        cfg.materials.buildings,
+    )
 
     out_dir = Path("outputs") / cfg.campus.name
     parts_dir = out_dir / "parts"
@@ -165,6 +174,11 @@ def build(config: Path = ConfigArg) -> None:
 
     base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m)
     base_mesh.export(out_dir / "base.stl")
+
+    if "tier_report" in cfg.outputs:
+        report_path = out_dir / "tier_report.txt"
+        report_path.write_text(build_tier_report(parts), encoding="utf-8")
+        typer.secho(f"Wrote {report_path}", fg=typer.colors.GREEN)
 
     typer.secho(
         f"Wrote {len(parts)} part(s) from {len(buildings)} building(s) and base.stl to {out_dir}",

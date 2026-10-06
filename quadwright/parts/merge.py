@@ -140,6 +140,7 @@ def build_parts(
     heights_mm: dict[str, float],
     tool_diameter_mm: float,
     tiers: Tiers,
+    species: str = "maple",
 ) -> list[Part]:
     """Group buildings (touching, then nearby-if-still-small), one Part per group.
 
@@ -147,6 +148,7 @@ def build_parts(
     campus-mm-scaled footprint/height (see `quadwright.mesh.scale.scale_buildings`).
     A merged part's height is its tallest member's height, since the whole
     group is milled from one blank. Output is in part-local mm (ADR-0003).
+    `species` should be the campus config's `materials.buildings`.
     """
     groups = group_touching_buildings(buildings)
     groups = merge_isolated_small_parts(groups, footprints_mm, heights_mm, tool_diameter_mm, tiers)
@@ -166,6 +168,7 @@ def build_parts(
                 height_mm=height_mm,
                 tier=tier,
                 position_on_base=(min_x, min_y),
+                species=species,
             )
         )
     return parts
