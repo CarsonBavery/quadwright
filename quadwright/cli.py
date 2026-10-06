@@ -12,12 +12,13 @@ from shapely.geometry import Polygon
 
 from quadwright import __version__
 from quadwright.config import CampusConfig, load_config
+from quadwright.export.kit import write_kit
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
 from quadwright.geo.render import render_footprints
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
 from quadwright.mesh.terrain import build_terrain_plate
-from quadwright.model import Building
+from quadwright.model import Building, Kit
 from quadwright.parts.merge import build_parts
 from quadwright.parts.report import build_tier_report
 from quadwright.resolve.terrain import build_height_grid
@@ -142,9 +143,11 @@ def build(config: Path = ConfigArg) -> None:
     is set and cached (run `fetch` first), a flat slab otherwise. Either
     way, part STLs stay in block-local coordinates (ADR-0003) -- terrain
     changes what they sit on, not the machining files themselves. Also
-    writes tier_report.txt (FR-12) when that's in the config's `outputs`.
+    writes tier_report.txt (FR-12) when that's in the config's `outputs`,
+    and always writes data/interim/<campus>/kit.json (FR-13) -- the
+    pipeline's own contract, not a user-selectable output.
 
-    Joinery/kit.json come later.
+    Joinery comes later.
     """
     cfg = load_config(config)
     buildings = _load_campus_buildings(cfg, config)
@@ -179,6 +182,16 @@ def build(config: Path = ConfigArg) -> None:
         report_path = out_dir / "tier_report.txt"
         report_path.write_text(build_tier_report(parts), encoding="utf-8")
         typer.secho(f"Wrote {report_path}", fg=typer.colors.GREEN)
+
+    base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
+    kit = Kit(
+        campus=cfg.campus.name,
+        base_plate=base_outline_mm,
+        parts=parts,
+        report={"building_count": len(buildings), "part_count": len(parts)},
+    )
+    kit_path = write_kit(kit, Path("data/interim") / cfg.campus.name / "kit.json")
+    typer.secho(f"Wrote {kit_path}", fg=typer.colors.GREEN)
 
     typer.secho(
         f"Wrote {len(parts)} part(s) from {len(buildings)} building(s) and base.stl to {out_dir}",
