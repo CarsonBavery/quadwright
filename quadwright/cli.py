@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import trimesh
@@ -104,8 +105,32 @@ def preview(config: Path = ConfigArg) -> None:
 
 @app.command()
 def audit(config: Path = ConfigArg) -> None:
-    """List buildings with defaulted heights or roofs. [week 3]"""
-    _planned(3)
+    """Report height data quality: how many buildings got a real value vs. the campus default.
+
+    Roof auditing isn't here yet -- roof shape resolution doesn't exist
+    yet either (every building is still a flat-topped box).
+    """
+    cfg = load_config(config)
+    buildings = _load_campus_buildings(cfg, config)
+
+    by_source = Counter(b.height_source for b in buildings)
+    typer.echo(f"Height sources ({len(buildings)} buildings):")
+    for source in ("tag", "levels", "override", "lidar", "default"):
+        count = by_source.get(source, 0)
+        if count:
+            typer.echo(f"  {source:<10} {count:>4}  ({100 * count / len(buildings):.1f}%)")
+
+    defaulted_named = sorted(
+        b.name for b in buildings if b.height_source == "default" and b.name is not None
+    )
+    if defaulted_named:
+        typer.echo()
+        typer.echo(
+            f"Named buildings with a defaulted height ({len(defaulted_named)}) -- "
+            "add a heights.overrides entry if you know the real value:"
+        )
+        for name in defaulted_named:
+            typer.echo(f"  {name}")
 
 
 @app.command()
