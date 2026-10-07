@@ -116,15 +116,17 @@ def test_fr11_audit_lists_named_buildings_with_a_defaulted_height(tmp_path, monk
     assert "Mystery Hall" in result.output
 
 
-def test_fr14_build_warns_on_an_unimplemented_requested_output(tmp_path, monkeypatch):
+def test_fr16_build_writes_setup_sheets_when_requested(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _cache_fixture_buildings(tmp_path)
-    config = _config_with_outputs(tmp_path, ["part_stl", "setup_sheets"])
+    config = _config_with_outputs(tmp_path, ["setup_sheets"])
 
     result = runner.invoke(app, ["build", config])
 
     assert result.exit_code == 0
-    assert "Not built yet, skipping requested output: setup_sheets" in result.output
+    sheets_path = tmp_path / "outputs" / "example-university" / "setup_sheets.txt"
+    assert sheets_path.exists()
+    assert "Setup sheets:" in sheets_path.read_text(encoding="utf-8")
 
 
 def test_fr14_build_only_writes_requested_outputs(tmp_path, monkeypatch):

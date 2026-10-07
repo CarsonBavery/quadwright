@@ -15,6 +15,7 @@ from shapely.ops import unary_union
 
 from quadwright.config import Tiers
 from quadwright.model import Building, Part, Tier
+from quadwright.parts.setups import assign_setups
 from quadwright.parts.tiers import assign_tier
 
 # Groups eligible to receive a merge: ordinary parts, or other small parts
@@ -148,7 +149,8 @@ def build_parts(
     campus-mm-scaled footprint/height (see `quadwright.mesh.scale.scale_buildings`).
     A merged part's height is its tallest member's height, since the whole
     group is milled from one blank. Output is in part-local mm (ADR-0003).
-    `species` should be the campus config's `materials.buildings`.
+    `species` should be the campus config's `materials.buildings`. Each
+    part's `setups` come from its tier (FR-16, see `assign_setups`).
     """
     groups = group_touching_buildings(buildings)
     groups = merge_isolated_small_parts(groups, footprints_mm, heights_mm, tool_diameter_mm, tiers)
@@ -169,6 +171,7 @@ def build_parts(
                 tier=tier,
                 position_on_base=(min_x, min_y),
                 species=species,
+                setups=assign_setups(tier),
             )
         )
     return parts

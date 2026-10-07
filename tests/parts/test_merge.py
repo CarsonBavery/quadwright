@@ -71,6 +71,18 @@ def test_fr12_build_parts_uses_the_configured_species():
     assert parts[0].species == "walnut"
 
 
+def test_fr16_build_parts_assigns_setups_from_the_tier():
+    block = _square("way/1", 0, 0, name="Test Building")  # BLOCK via TIERS override
+    hero_tiers = Tiers(overrides={"Landmark": 3})
+    hero = _square("way/2", 1000, 1000, name="Landmark")
+
+    block_parts = build_parts([block], {"way/1": block.footprint}, {"way/1": 10.0}, 3.175, TIERS)
+    hero_parts = build_parts([hero], {"way/2": hero.footprint}, {"way/2": 10.0}, 3.175, hero_tiers)
+
+    assert [s.face_up for s in block_parts[0].setups] == ["top"]
+    assert [s.face_up for s in hero_parts[0].setups] == ["top", "north", "south", "east", "west"]
+
+
 def test_fr07_build_parts_assigns_sequential_ids():
     a = _square("way/1", 0, 0, name="Test Building")
     b = _square("way/2", 1000, 1000, name="Test Building")
