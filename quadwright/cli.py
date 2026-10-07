@@ -135,21 +135,30 @@ def audit(config: Path = ConfigArg) -> None:
             typer.echo(f"  {name}")
 
 
+_IMPLEMENTED_OUTPUTS = {"part_stl", "base_stl", "tier_report"}
+
+
 @app.command()
 def build(config: Path = ConfigArg) -> None:
-    """Extrude merged, tiered part STLs and the base plate (FR-06, FR-07, FR-09, FR-10).
+    """Write the campus config's requested `outputs:` (FR-06, FR-07, FR-09, FR-10, FR-12).
 
-    The base plate is a contoured terrain block when campus.lidar_project
-    is set and cached (run `fetch` first), a flat slab otherwise. Either
-    way, part STLs stay in block-local coordinates (ADR-0003) -- terrain
-    changes what they sit on, not the machining files themselves. Also
-    writes tier_report.txt (FR-12) when that's in the config's `outputs`,
-    and always writes data/interim/<campus>/kit.json (FR-13) -- the
-    pipeline's own contract, not a user-selectable output.
+    part_stl: merged, tiered part STLs, block-local (ADR-0003). base_stl:
+    a contoured terrain block when campus.lidar_project is set and
+    cached (run `fetch` first), a flat slab otherwise -- terrain changes
+    what parts sit on, not the machining files themselves. tier_report:
+    a parts-by-tier summary (FR-12). heightmap/setup_sheets aren't built
+    yet; requesting them prints a warning rather than failing or
+    silently doing nothing. data/interim/<campus>/kit.json (FR-13)
+    always gets written -- it's the pipeline's own contract, not a
+    user-selectable output.
 
     Joinery comes later.
     """
     cfg = load_config(config)
+    for kind in cfg.outputs:
+        if kind not in _IMPLEMENTED_OUTPUTS:
+            typer.secho(f"Not built yet, skipping requested output: {kind}", fg="yellow")
+
     buildings = _load_campus_buildings(cfg, config)
     campus_outline_m = campus_bbox_local(cfg.campus.bbox)
     min_x_m, min_y_m, max_x_m, max_y_m = campus_outline_m.bounds
@@ -169,16 +178,22 @@ def build(config: Path = ConfigArg) -> None:
     )
 
     out_dir = Path("outputs") / cfg.campus.name
-    parts_dir = out_dir / "parts"
-    parts_dir.mkdir(parents=True, exist_ok=True)
 
-    for part in parts:
-        extrude_box(part.footprint_local, part.height_mm).export(parts_dir / f"{part.id}.stl")
+    if "part_stl" in cfg.outputs:
+        parts_dir = out_dir / "parts"
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        for part in parts:
+            extrude_box(part.footprint_local, part.height_mm).export(parts_dir / f"{part.id}.stl")
+        typer.secho(f"Wrote {len(parts)} part STL(s) to {parts_dir}", fg=typer.colors.GREEN)
 
-    base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m)
-    base_mesh.export(out_dir / "base.stl")
+    if "base_stl" in cfg.outputs:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        base_path = out_dir / "base.stl"
+        _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m).export(base_path)
+        typer.secho(f"Wrote {base_path}", fg=typer.colors.GREEN)
 
     if "tier_report" in cfg.outputs:
+        out_dir.mkdir(parents=True, exist_ok=True)
         report_path = out_dir / "tier_report.txt"
         report_path.write_text(build_tier_report(parts), encoding="utf-8")
         typer.secho(f"Wrote {report_path}", fg=typer.colors.GREEN)
@@ -193,10 +208,7 @@ def build(config: Path = ConfigArg) -> None:
     kit_path = write_kit(kit, Path("data/interim") / cfg.campus.name / "kit.json")
     typer.secho(f"Wrote {kit_path}", fg=typer.colors.GREEN)
 
-    typer.secho(
-        f"Wrote {len(parts)} part(s) from {len(buildings)} building(s) and base.stl to {out_dir}",
-        fg=typer.colors.GREEN,
-    )
+    typer.echo(f"{len(parts)} part(s) from {len(buildings)} building(s).")
 
 
 def _build_base(
