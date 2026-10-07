@@ -35,10 +35,10 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M12 heightmap (render_heightmap in
-quadwright/geo/render.py, FR-15) -- colorized elevation PNG, the last
-remaining OutputKind besides setup_sheets.
+Week: 1. Last milestone: M13 Setup sheets (quadwright/parts/setups.py
+assign_setups, quadwright/parts/sheets.py build_setup_sheets, FR-16).
+Every OutputKind the schema supports is now implemented -- `build`
+against real unc-charlotte data runs with zero warnings.
 Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
 `clearance_mm` from the (not-yet-built) coupon test; pick a direction
-that doesn't guess fabrication data. setup_sheets needs Setup-per-tier
-assignment logic first either way.
+that doesn't guess fabrication data.
