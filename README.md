@@ -40,6 +40,7 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M9 Tier report (parts-by-tier summary output) | Done |
 | M10 kit.json (geometry-to-exporters contract) | Done |
 | M11 build honors outputs: (warns instead of silently ignoring) | Done |
+| M12 heightmap (colorized elevation PNG) | Done |
 | M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
 
 ## Data attribution

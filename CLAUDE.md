@@ -35,10 +35,10 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M11 (build honors outputs:, FR-14) -- part_stl/
-base_stl/tier_report are now conditional on what's configured, and an
-unimplemented requested output (setup_sheets, heightmap) warns instead
-of being silently ignored.
+Week: 1. Last milestone: M12 heightmap (render_heightmap in
+quadwright/geo/render.py, FR-15) -- colorized elevation PNG, the last
+remaining OutputKind besides setup_sheets.
 Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
 `clearance_mm` from the (not-yet-built) coupon test; pick a direction
-that doesn't guess fabrication data.
+that doesn't guess fabrication data. setup_sheets needs Setup-per-tier
+assignment logic first either way.
