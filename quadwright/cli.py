@@ -21,6 +21,7 @@ from quadwright.mesh.terrain import build_terrain_plate
 from quadwright.model import Building, Kit
 from quadwright.parts.merge import build_parts
 from quadwright.parts.report import build_tier_report
+from quadwright.parts.sheets import build_setup_sheets
 from quadwright.resolve.terrain import HeightGrid, build_height_grid
 from quadwright.sources.lidar import fetch_campus_lidar
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
@@ -135,12 +136,11 @@ def audit(config: Path = ConfigArg) -> None:
             typer.echo(f"  {name}")
 
 
-_IMPLEMENTED_OUTPUTS = {"part_stl", "base_stl", "tier_report", "heightmap"}
-
-
 @app.command()
 def build(config: Path = ConfigArg) -> None:
-    """Write the campus config's requested `outputs:` (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15).
+    """Write the campus config's requested `outputs:`.
+
+    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16.)
 
     part_stl: merged, tiered part STLs, block-local (ADR-0003). base_stl:
     a contoured terrain block when campus.lidar_project is set and
@@ -149,18 +149,15 @@ def build(config: Path = ConfigArg) -> None:
     a parts-by-tier summary (FR-12). heightmap: a colorized PNG of the
     elevation grid -- only possible when campus.lidar_project is set
     (prints a warning and skips otherwise, rather than failing the
-    whole build). setup_sheets isn't built yet; requesting it prints a
-    warning rather than silently doing nothing.
+    whole build). setup_sheets: a per-part machining checklist, from
+    each part's tier-derived Setups (FR-16) -- the plan, not yet
+    rendered per-setup drawings.
     data/interim/<campus>/kit.json (FR-13) always gets written -- it's
     the pipeline's own contract, not a user-selectable output.
 
     Joinery comes later.
     """
     cfg = load_config(config)
-    for kind in cfg.outputs:
-        if kind not in _IMPLEMENTED_OUTPUTS:
-            typer.secho(f"Not built yet, skipping requested output: {kind}", fg="yellow")
-
     buildings = _load_campus_buildings(cfg, config)
     campus_outline_m = campus_bbox_local(cfg.campus.bbox)
     min_x_m, min_y_m, max_x_m, max_y_m = campus_outline_m.bounds
@@ -218,6 +215,12 @@ def build(config: Path = ConfigArg) -> None:
         report_path = out_dir / "tier_report.txt"
         report_path.write_text(build_tier_report(parts), encoding="utf-8")
         typer.secho(f"Wrote {report_path}", fg=typer.colors.GREEN)
+
+    if "setup_sheets" in cfg.outputs:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        sheets_path = out_dir / "setup_sheets.txt"
+        sheets_path.write_text(build_setup_sheets(parts), encoding="utf-8")
+        typer.secho(f"Wrote {sheets_path}", fg=typer.colors.GREEN)
 
     base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
     kit = Kit(
