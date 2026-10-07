@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 
+import yaml
 from typer.testing import CliRunner
 
 from quadwright.cli import app
@@ -9,6 +10,21 @@ from quadwright.cli import app
 runner = CliRunner()
 EXAMPLE = str(Path(__file__).parents[1] / "configs" / "campuses" / "example-university.yaml")
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_buildings.geojson"
+
+
+def _config_with_outputs(tmp_path: Path, outputs: list[str]) -> str:
+    """A copy of example-university.yaml with its outputs: list replaced."""
+    data = yaml.safe_load(Path(EXAMPLE).read_text())
+    data["outputs"] = outputs
+    config_path = tmp_path / "custom.yaml"
+    config_path.write_text(yaml.safe_dump(data))
+    return str(config_path)
+
+
+def _cache_fixture_buildings(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "data" / "raw" / "example-university"
+    cache_dir.mkdir(parents=True)
+    shutil.copy(FIXTURE, cache_dir / "buildings.geojson")
 
 
 def test_validate_example_succeeds():
@@ -98,3 +114,52 @@ def test_fr11_audit_lists_named_buildings_with_a_defaulted_height(tmp_path, monk
     assert result.exit_code == 0
     assert "Named buildings with a defaulted height (1)" in result.output
     assert "Mystery Hall" in result.output
+
+
+def test_fr14_build_warns_on_an_unimplemented_requested_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    config = _config_with_outputs(tmp_path, ["part_stl", "setup_sheets"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    assert "Not built yet, skipping requested output: setup_sheets" in result.output
+
+
+def test_fr14_build_only_writes_requested_outputs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    config = _config_with_outputs(tmp_path, ["base_stl"])  # no part_stl, no tier_report
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    out_dir = tmp_path / "outputs" / "example-university"
+    assert (out_dir / "base.stl").exists()
+    assert not (out_dir / "parts").exists()
+    assert not (out_dir / "tier_report.txt").exists()
+
+
+def test_fr14_build_skips_base_stl_when_not_requested(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    config = _config_with_outputs(tmp_path, ["part_stl"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    out_dir = tmp_path / "outputs" / "example-university"
+    assert not (out_dir / "base.stl").exists()
+    assert any((out_dir / "parts").glob("*.stl"))
+
+
+def test_fr14_build_always_writes_kit_json(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    config = _config_with_outputs(tmp_path, [])  # nothing requested at all
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    assert (tmp_path / "data" / "interim" / "example-university" / "kit.json").exists()
