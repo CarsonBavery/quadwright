@@ -33,4 +33,4 @@ tiers:
 roofs:
   engine: rules
 
-outputs: [part_stl, base_stl, setup_sheets, tier_report]
+outputs: [part_stl, base_stl, heightmap, setup_sheets, tier_report]

@@ -14,14 +14,14 @@ from quadwright import __version__
 from quadwright.config import CampusConfig, load_config
 from quadwright.export.kit import write_kit
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
-from quadwright.geo.render import render_footprints
+from quadwright.geo.render import render_footprints, render_heightmap
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
 from quadwright.mesh.terrain import build_terrain_plate
 from quadwright.model import Building, Kit
 from quadwright.parts.merge import build_parts
 from quadwright.parts.report import build_tier_report
-from quadwright.resolve.terrain import build_height_grid
+from quadwright.resolve.terrain import HeightGrid, build_height_grid
 from quadwright.sources.lidar import fetch_campus_lidar
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
 
@@ -135,22 +135,24 @@ def audit(config: Path = ConfigArg) -> None:
             typer.echo(f"  {name}")
 
 
-_IMPLEMENTED_OUTPUTS = {"part_stl", "base_stl", "tier_report"}
+_IMPLEMENTED_OUTPUTS = {"part_stl", "base_stl", "tier_report", "heightmap"}
 
 
 @app.command()
 def build(config: Path = ConfigArg) -> None:
-    """Write the campus config's requested `outputs:` (FR-06, FR-07, FR-09, FR-10, FR-12).
+    """Write the campus config's requested `outputs:` (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15).
 
     part_stl: merged, tiered part STLs, block-local (ADR-0003). base_stl:
     a contoured terrain block when campus.lidar_project is set and
     cached (run `fetch` first), a flat slab otherwise -- terrain changes
     what parts sit on, not the machining files themselves. tier_report:
-    a parts-by-tier summary (FR-12). heightmap/setup_sheets aren't built
-    yet; requesting them prints a warning rather than failing or
-    silently doing nothing. data/interim/<campus>/kit.json (FR-13)
-    always gets written -- it's the pipeline's own contract, not a
-    user-selectable output.
+    a parts-by-tier summary (FR-12). heightmap: a colorized PNG of the
+    elevation grid -- only possible when campus.lidar_project is set
+    (prints a warning and skips otherwise, rather than failing the
+    whole build). setup_sheets isn't built yet; requesting it prints a
+    warning rather than silently doing nothing.
+    data/interim/<campus>/kit.json (FR-13) always gets written -- it's
+    the pipeline's own contract, not a user-selectable output.
 
     Joinery comes later.
     """
@@ -186,11 +188,30 @@ def build(config: Path = ConfigArg) -> None:
             extrude_box(part.footprint_local, part.height_mm).export(parts_dir / f"{part.id}.stl")
         typer.secho(f"Wrote {len(parts)} part STL(s) to {parts_dir}", fg=typer.colors.GREEN)
 
+    # Loaded once, at most -- building it reads every cached LIDAR tile,
+    # so base_stl and heightmap share one grid instead of each paying
+    # that cost separately.
+    terrain_grid: HeightGrid | None = None
+    if ("base_stl" in cfg.outputs or "heightmap" in cfg.outputs) and cfg.campus.lidar_project:
+        terrain_grid = _load_terrain_grid(cfg, scale_mm_per_m)
+
     if "base_stl" in cfg.outputs:
         out_dir.mkdir(parents=True, exist_ok=True)
         base_path = out_dir / "base.stl"
-        _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m).export(base_path)
+        _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid).export(base_path)
         typer.secho(f"Wrote {base_path}", fg=typer.colors.GREEN)
+
+    if "heightmap" in cfg.outputs:
+        if terrain_grid is None:
+            typer.secho(
+                f"heightmap requested but campus.lidar_project isn't set for "
+                f"{cfg.campus.name}; skipping.",
+                fg="yellow",
+            )
+        else:
+            heightmap_path = out_dir / "heightmap.png"
+            render_heightmap(terrain_grid, heightmap_path)
+            typer.secho(f"Wrote {heightmap_path}", fg=typer.colors.GREEN)
 
     if "tier_report" in cfg.outputs:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -211,30 +232,35 @@ def build(config: Path = ConfigArg) -> None:
     typer.echo(f"{len(parts)} part(s) from {len(buildings)} building(s).")
 
 
+def _load_terrain_grid(cfg: CampusConfig, scale_mm_per_m: float) -> HeightGrid:
+    """Load and grid cached LIDAR tiles. Only call this when campus.lidar_project is set."""
+    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
+    lidar_paths = sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
+    if not lidar_paths:
+        typer.secho(f"No cached LIDAR for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
+        typer.echo("Run first: quadwright fetch", err=True)
+        raise typer.Exit(code=1)
+
+    # A grid cell finer than one tool-diameter (in real-world terms, at
+    # this model's scale) buys nothing -- the mill can't resolve it
+    # anyway, and it would just bloat the mesh. At unc-charlotte's scale
+    # this is ~22m vs. the naive 2m default (a ~100x fewer cells, 322MB
+    # -> ~3MB of actual STL).
+    cell_size_m = cfg.tool.diameter_mm / scale_mm_per_m
+    return build_height_grid(lidar_paths, cfg.campus.bbox, cell_size_m)
+
+
 def _build_base(
     cfg: CampusConfig,
     campus_outline_m: Polygon,
     origin_m: tuple[float, float],
     scale_mm_per_m: float,
+    terrain_grid: HeightGrid | None,
 ) -> trimesh.Trimesh:
-    """Build the base plate: a terrain block if LIDAR is cached, a flat slab otherwise."""
-    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
-    lidar_paths = sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
-    if cfg.campus.lidar_project is not None and not lidar_paths:
-        typer.secho(f"No cached LIDAR for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
-        typer.echo("Run first: quadwright fetch", err=True)
-        raise typer.Exit(code=1)
-
-    if lidar_paths:
-        # A grid cell finer than one tool-diameter (in real-world terms,
-        # at this model's scale) buys nothing -- the mill can't resolve
-        # it anyway, and it would just bloat the mesh. At unc-charlotte's
-        # scale this is ~22m vs. the naive 2m default (a ~100x fewer
-        # cells, 322MB -> ~3MB of actual STL).
-        cell_size_m = cfg.tool.diameter_mm / scale_mm_per_m
-        grid = build_height_grid(lidar_paths, cfg.campus.bbox, cell_size_m)
+    """Build the base plate: a terrain block if a grid was loaded, a flat slab otherwise."""
+    if terrain_grid is not None:
         return build_terrain_plate(
-            grid, scale_mm_per_m, cfg.scale.vertical_exaggeration, BASE_PLATE_THICKNESS_MM
+            terrain_grid, scale_mm_per_m, cfg.scale.vertical_exaggeration, BASE_PLATE_THICKNESS_MM
         )
 
     base_outline_mm = to_model_mm(campus_outline_m, origin_m, scale_mm_per_m)
