@@ -11,11 +11,12 @@ from pydantic import ValidationError
 from shapely.geometry import Polygon
 
 from quadwright import __version__
-from quadwright.config import CampusConfig, load_config
+from quadwright.config import CampusConfig, load_config, load_species_config
 from quadwright.export.kit import write_kit
 from quadwright.fab.coupon import build_coupon, build_manifest
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
 from quadwright.geo.render import render_footprints, render_heightmap
+from quadwright.joinery.tenons import MissingClearanceError
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
 from quadwright.mesh.terrain import build_terrain_plate
@@ -141,7 +142,7 @@ def audit(config: Path = ConfigArg) -> None:
 def build(config: Path = ConfigArg) -> None:
     """Write the campus config's requested `outputs:`.
 
-    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16.)
+    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18.)
 
     part_stl: merged, tiered part STLs, block-local (ADR-0003). base_stl:
     a contoured terrain block when campus.lidar_project is set and
@@ -156,7 +157,10 @@ def build(config: Path = ConfigArg) -> None:
     data/interim/<campus>/kit.json (FR-13) always gets written -- it's
     the pipeline's own contract, not a user-selectable output.
 
-    Joinery comes later.
+    Each part's Joint (tenon or dowel fallback, FR-18) needs that species'
+    measured clearance_mm from configs/species/<species>.yaml -- run
+    `quadwright coupon` first if it's still null. Cutting the matching
+    pocket into base_stl itself comes in a later milestone.
     """
     cfg = load_config(config)
     buildings = _load_campus_buildings(cfg, config)
@@ -168,14 +172,20 @@ def build(config: Path = ConfigArg) -> None:
     footprints_mm, heights_mm = scale_buildings(
         buildings, origin_m, scale_mm_per_m, cfg.scale.vertical_exaggeration
     )
-    parts = build_parts(
-        buildings,
-        footprints_mm,
-        heights_mm,
-        cfg.tool.diameter_mm,
-        cfg.tiers,
-        cfg.materials.buildings,
-    )
+    species_cfg = load_species_config(cfg.materials.buildings)
+    try:
+        parts = build_parts(
+            buildings,
+            footprints_mm,
+            heights_mm,
+            cfg.tool.diameter_mm,
+            cfg.tiers,
+            cfg.materials.buildings,
+            species_cfg.clearance_mm,
+        )
+    except MissingClearanceError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
 
     out_dir = Path("outputs") / cfg.campus.name
 

@@ -14,6 +14,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from quadwright.config import Tiers
+from quadwright.joinery.tenons import build_joint
 from quadwright.model import Building, Part, Tier
 from quadwright.parts.setups import assign_setups
 from quadwright.parts.tiers import assign_tier
@@ -142,6 +143,7 @@ def build_parts(
     tool_diameter_mm: float,
     tiers: Tiers,
     species: str = "maple",
+    clearance_mm: float | None = None,
 ) -> list[Part]:
     """Group buildings (touching, then nearby-if-still-small), one Part per group.
 
@@ -151,6 +153,9 @@ def build_parts(
     group is milled from one blank. Output is in part-local mm (ADR-0003).
     `species` should be the campus config's `materials.buildings`. Each
     part's `setups` come from its tier (FR-16, see `assign_setups`).
+    `clearance_mm` is that species' measured coupon-test value (FR-17/FR-18,
+    see `quadwright.config.load_species_config`); `None` propagates into
+    `build_joint` raising `MissingClearanceError`.
     """
     groups = group_touching_buildings(buildings)
     groups = merge_isolated_small_parts(groups, footprints_mm, heights_mm, tool_diameter_mm, tiers)
@@ -162,6 +167,7 @@ def build_parts(
         footprint_local = translate(group_footprint, xoff=-min_x, yoff=-min_y)
         height_mm = max(heights_mm[b.osm_id] for b in group)
         tier = _group_tier(group, footprint_local, heights_mm, tool_diameter_mm, tiers)
+        joint = build_joint(footprint_local, species, clearance_mm, tool_diameter_mm)
         parts.append(
             Part(
                 id=f"part-{index:04d}",
@@ -172,6 +178,7 @@ def build_parts(
                 position_on_base=(min_x, min_y),
                 species=species,
                 setups=assign_setups(tier),
+                joint=joint,
             )
         )
     return parts
