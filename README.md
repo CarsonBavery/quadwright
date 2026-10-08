@@ -41,6 +41,7 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M10 kit.json (geometry-to-exporters contract) | Done |
 | M11 build honors outputs: (warns instead of silently ignoring) | Done |
 | M12 heightmap (colorized elevation PNG) | Done |
+| M13 Setup sheets (per-part machining checklist) | Done -- every `outputs:` kind is now implemented |
 | M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
 
 ## Data attribution
