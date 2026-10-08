@@ -2,6 +2,9 @@
 
 ADR-0004: buildings are milled as separate parts rather than unioned into
 one mesh, so each footprint becomes its own box here -- no boolean ops.
+(quadwright.joinery.cut adds each part's tenon/dowel boss and the base's
+matching pockets on top of these boxes, FR-19 -- those booleans live
+there, not here.)
 """
 
 from __future__ import annotations
@@ -9,7 +12,7 @@ from __future__ import annotations
 import trimesh
 from shapely.geometry import MultiPolygon, Polygon
 
-BASE_PLATE_THICKNESS_MM = 6.0  # a plain slab for now; joinery pockets come in a later milestone
+BASE_PLATE_THICKNESS_MM = 6.0  # PLACEHOLDER -- picked to comfortably fit a 2mm joinery pocket
 
 
 def extrude_box(footprint_mm: Polygon | MultiPolygon, height_mm: float) -> trimesh.Trimesh:
