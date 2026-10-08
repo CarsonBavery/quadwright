@@ -35,10 +35,12 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M13 Setup sheets (quadwright/parts/setups.py
-assign_setups, quadwright/parts/sheets.py build_setup_sheets, FR-16).
-Every OutputKind the schema supports is now implemented -- `build`
-against real unc-charlotte data runs with zero warnings.
+Week: 1. Last milestone: M14 tolerance coupon (quadwright/fab/coupon.py
+build_coupon, `quadwright coupon` CLI command, FR-17) -- a pocket
+blank plus a row of test tenons at different clearances, meant to be
+cut and test-fit by hand.
 Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
-`clearance_mm` from the (not-yet-built) coupon test; pick a direction
-that doesn't guess fabrication data.
+`clearance_mm`. The coupon now exists but still needs to be physically
+cut and fit; configs/species/*.yaml's clearance_mm stays `null` until
+that happens. Do not guess a value to unblock M5 -- ask the user for
+the measured number once they've run the test.
