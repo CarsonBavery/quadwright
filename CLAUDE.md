@@ -35,12 +35,17 @@ This is a learning project. Explain non-obvious code in comments.
   `gh` is installed and authenticated on this machine.
 
 ## Current state
-Week: 1. Last milestone: M14 tolerance coupon (quadwright/fab/coupon.py
-build_coupon, `quadwright coupon` CLI command, FR-17) -- a pocket
-blank plus a row of test tenons at different clearances, meant to be
-cut and test-fit by hand.
-Next: M5 Joinery (tenons & pockets) -- still blocked on a measured
-`clearance_mm`. The coupon now exists but still needs to be physically
-cut and fit; configs/species/*.yaml's clearance_mm stays `null` until
-that happens. Do not guess a value to unblock M5 -- ask the user for
-the measured number once they've run the test.
+Week: 1. Last milestone: M5 Joinery, part one (quadwright/joinery/tenons.py
+build_joint, FR-18) -- each Part gets a footprint-shaped tenon or a
+two-dowel fallback, from that species' measured clearance_mm
+(configs/species/<name>.yaml). `null` raises MissingClearanceError
+with a `quadwright coupon` hint instead of ever guessing a value.
+Carson is keeping the project at the model stage for now (no mill
+available), so clearance_mm stays a per-run fixture value rather than
+a real measurement -- that's expected, not a blocker.
+Next: cut the matching tenon/pocket geometry into the actual meshes
+(part_stl's tenon boss, base_stl's pocket) -- the decision logic above
+only produces shape data today. This needs real boolean ops, which
+quadwright/mesh/extrude.py deliberately doesn't do yet (ADR-0004: "no
+boolean ops" was a choice for the box-extrusion case, not a hard rule);
+propose a plan before touching it, since it changes that design.
