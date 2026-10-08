@@ -60,9 +60,19 @@ def test_fr01_rejects_bad_tier_override(tmp_path, example_data):
         load_config(_write(tmp_path, example_data))
 
 
-def test_fr18_example_species_configs_load_with_no_clearance_yet():
+def test_fr18_example_species_config_loads():
+    # Not asserting on clearance_mm's value here -- configs/species/maple.yaml
+    # is live project state (a placeholder today, a real measurement later),
+    # not a fixture this test should pin down. test_fr18_species_config_rejects_null
+    # below covers the still-unmeasured case with its own tmp_path fixture.
     cfg = load_species_config("maple", species_dir=SPECIES_DIR)
     assert cfg.species == "maple"
+
+
+def test_fr18_species_config_accepts_a_null_clearance(tmp_path):
+    path = tmp_path / "maple.yaml"
+    path.write_text(yaml.safe_dump({"species": "maple", "clearance_mm": None}))
+    cfg = load_species_config("maple", species_dir=tmp_path)
     assert cfg.clearance_mm is None
 
 
