@@ -13,6 +13,7 @@ from shapely.geometry import Polygon
 from quadwright import __version__
 from quadwright.config import CampusConfig, load_config
 from quadwright.export.kit import write_kit
+from quadwright.fab.coupon import build_coupon, build_manifest
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
 from quadwright.geo.render import render_footprints, render_heightmap
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
@@ -272,8 +273,27 @@ def _build_base(
 
 @app.command()
 def coupon(species: str = typer.Option("maple", help="Wood species")) -> None:
-    """Generate the tolerance test coupon. [week 6]"""
-    _planned(6)
+    """Generate the tolerance-test coupon: a pocket blank and matching test tenons (FR-17).
+
+    Cut both, test-fit each tenon in its pocket, and record the
+    clearance that felt snug-but-removable in
+    configs/species/<species>.yaml's clearance_mm -- that measured
+    value is what M5 Joinery is blocked on.
+    """
+    coupon_result = build_coupon()
+    out_dir = Path("outputs") / "coupon" / species
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    pockets_path = out_dir / "pockets.stl"
+    tenons_path = out_dir / "tenons.stl"
+    manifest_path = out_dir / "manifest.txt"
+    coupon_result.pockets.export(pockets_path)
+    coupon_result.tenons.export(tenons_path)
+    manifest_path.write_text(build_manifest(coupon_result.clearances_mm), encoding="utf-8")
+
+    typer.secho(f"Wrote {pockets_path}", fg=typer.colors.GREEN)
+    typer.secho(f"Wrote {tenons_path}", fg=typer.colors.GREEN)
+    typer.secho(f"Wrote {manifest_path}", fg=typer.colors.GREEN)
 
 
 @app.command()
