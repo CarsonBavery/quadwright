@@ -1,5 +1,8 @@
 # Fit data for maple. Fill in clearance_mm after cutting the tolerance coupon (week 6).
 species: maple
-clearance_mm: null        # chosen tenon-to-pocket gap, e.g. 0.10
-tested_on: null           # date of the coupon test, e.g. 2026-11-12
-notes: ""
+# PLACEHOLDER clearance_mm (0.15) -- not measured, no mill available yet.
+# Model-stage visualization only; overwrite with the real coupon-test
+# value (quadwright coupon, FR-17) before cutting anything for real.
+clearance_mm: 0.15
+tested_on: null
+notes: "placeholder clearance_mm: no coupon cut yet, no mill available"
