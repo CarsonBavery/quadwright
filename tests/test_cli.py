@@ -27,6 +27,23 @@ def _cache_fixture_buildings(tmp_path: Path) -> None:
     shutil.copy(FIXTURE, cache_dir / "buildings.geojson")
 
 
+def _write_species_config(
+    tmp_path: Path, species: str = "maple", clearance_mm: float = 0.15
+) -> None:
+    """A measured-clearance species config, so `build` doesn't hit MissingClearanceError.
+
+    example-university.yaml's materials.buildings is "maple" -- the real
+    configs/species/maple.yaml still has clearance_mm: null (no coupon cut
+    yet), so CLI tests need their own fixture value here, same way they
+    fixture buildings.geojson instead of hitting the real network/cache.
+    """
+    species_dir = tmp_path / "configs" / "species"
+    species_dir.mkdir(parents=True, exist_ok=True)
+    (species_dir / f"{species}.yaml").write_text(
+        yaml.safe_dump({"species": species, "clearance_mm": clearance_mm})
+    )
+
+
 def test_validate_example_succeeds():
     result = runner.invoke(app, ["validate", EXAMPLE])
     assert result.exit_code == 0
@@ -116,9 +133,27 @@ def test_fr11_audit_lists_named_buildings_with_a_defaulted_height(tmp_path, monk
     assert "Mystery Hall" in result.output
 
 
+def test_fr18_build_fails_with_a_hint_when_clearance_is_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    # No _write_species_config call -- configs/species/maple.yaml doesn't exist
+    # at all here, same as a species nobody has ever run the coupon test for.
+    (tmp_path / "configs" / "species").mkdir(parents=True)
+    (tmp_path / "configs" / "species" / "maple.yaml").write_text(
+        yaml.safe_dump({"species": "maple", "clearance_mm": None})
+    )
+    config = _config_with_outputs(tmp_path, [])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 1
+    assert "quadwright coupon" in result.output
+
+
 def test_fr16_build_writes_setup_sheets_when_requested(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
     config = _config_with_outputs(tmp_path, ["setup_sheets"])
 
     result = runner.invoke(app, ["build", config])
@@ -132,6 +167,7 @@ def test_fr16_build_writes_setup_sheets_when_requested(tmp_path, monkeypatch):
 def test_fr14_build_only_writes_requested_outputs(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
     config = _config_with_outputs(tmp_path, ["base_stl"])  # no part_stl, no tier_report
 
     result = runner.invoke(app, ["build", config])
@@ -146,6 +182,7 @@ def test_fr14_build_only_writes_requested_outputs(tmp_path, monkeypatch):
 def test_fr14_build_skips_base_stl_when_not_requested(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
     config = _config_with_outputs(tmp_path, ["part_stl"])
 
     result = runner.invoke(app, ["build", config])
@@ -159,6 +196,7 @@ def test_fr14_build_skips_base_stl_when_not_requested(tmp_path, monkeypatch):
 def test_fr14_build_always_writes_kit_json(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
     config = _config_with_outputs(tmp_path, [])  # nothing requested at all
 
     result = runner.invoke(app, ["build", config])

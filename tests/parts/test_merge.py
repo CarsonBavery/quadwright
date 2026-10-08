@@ -1,10 +1,16 @@
 """FR-07: merge touching buildings into machinable parts."""
 
+import pytest
 from shapely.geometry import Polygon
 
 from quadwright.config import Tiers
+from quadwright.joinery.tenons import MissingClearanceError
 from quadwright.model import Building, Tier
 from quadwright.parts.merge import build_parts, group_touching_buildings, merge_isolated_small_parts
+
+# Fixture value, not a fabrication claim -- these tests check build_parts'
+# own wiring (grouping, tiers, setups), not a particular species' real fit.
+TEST_CLEARANCE_MM = 0.15
 
 
 def _square(
@@ -49,7 +55,14 @@ def test_fr07_build_parts_merges_footprints_and_takes_the_tallest_height():
     footprints_mm = {"way/1": a.footprint, "way/2": b.footprint}
     heights_mm = {"way/1": 15.0, "way/2": 40.0}
 
-    parts = build_parts([a, b], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS)
+    parts = build_parts(
+        [a, b],
+        footprints_mm,
+        heights_mm,
+        tool_diameter_mm=3.175,
+        tiers=TIERS,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
 
     assert len(parts) == 1
     part = parts[0]
@@ -65,10 +78,41 @@ def test_fr12_build_parts_uses_the_configured_species():
     footprints_mm, heights_mm = {"way/1": a.footprint}, {"way/1": 10.0}
 
     parts = build_parts(
-        [a], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS, species="walnut"
+        [a],
+        footprints_mm,
+        heights_mm,
+        tool_diameter_mm=3.175,
+        tiers=TIERS,
+        species="walnut",
+        clearance_mm=TEST_CLEARANCE_MM,
     )
 
     assert parts[0].species == "walnut"
+
+
+def test_fr18_build_parts_raises_without_a_measured_clearance():
+    a = _square("way/1", 0, 0, name="Test Building")
+    footprints_mm, heights_mm = {"way/1": a.footprint}, {"way/1": 10.0}
+
+    with pytest.raises(MissingClearanceError):
+        build_parts([a], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS)
+
+
+def test_fr18_build_parts_attaches_a_joint():
+    a = _square("way/1", 0, 0, name="Test Building")
+    footprints_mm, heights_mm = {"way/1": a.footprint}, {"way/1": 10.0}
+
+    parts = build_parts(
+        [a],
+        footprints_mm,
+        heights_mm,
+        tool_diameter_mm=3.175,
+        tiers=TIERS,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
+
+    assert parts[0].joint is not None
+    assert parts[0].joint.clearance_mm == TEST_CLEARANCE_MM
 
 
 def test_fr16_build_parts_assigns_setups_from_the_tier():
@@ -76,8 +120,22 @@ def test_fr16_build_parts_assigns_setups_from_the_tier():
     hero_tiers = Tiers(overrides={"Landmark": 3})
     hero = _square("way/2", 1000, 1000, name="Landmark")
 
-    block_parts = build_parts([block], {"way/1": block.footprint}, {"way/1": 10.0}, 3.175, TIERS)
-    hero_parts = build_parts([hero], {"way/2": hero.footprint}, {"way/2": 10.0}, 3.175, hero_tiers)
+    block_parts = build_parts(
+        [block],
+        {"way/1": block.footprint},
+        {"way/1": 10.0},
+        3.175,
+        TIERS,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
+    hero_parts = build_parts(
+        [hero],
+        {"way/2": hero.footprint},
+        {"way/2": 10.0},
+        3.175,
+        hero_tiers,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
 
     assert [s.face_up for s in block_parts[0].setups] == ["top"]
     assert [s.face_up for s in hero_parts[0].setups] == ["top", "north", "south", "east", "west"]
@@ -89,7 +147,14 @@ def test_fr07_build_parts_assigns_sequential_ids():
     footprints_mm = {"way/1": a.footprint, "way/2": b.footprint}
     heights_mm = {"way/1": 10.0, "way/2": 10.0}
 
-    parts = build_parts([a, b], footprints_mm, heights_mm, tool_diameter_mm=3.175, tiers=TIERS)
+    parts = build_parts(
+        [a, b],
+        footprints_mm,
+        heights_mm,
+        tool_diameter_mm=3.175,
+        tiers=TIERS,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
 
     assert {p.id for p in parts} == {"part-0000", "part-0001"}
 
@@ -155,7 +220,14 @@ def test_fr07_build_parts_end_to_end_rescues_isolated_small_buildings():
     b = _square("way/2", 6, 6, size=5)
     footprints_mm, heights_mm = _footprints_and_heights([a, b])
 
-    parts = build_parts([a, b], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS)
+    parts = build_parts(
+        [a, b],
+        footprints_mm,
+        heights_mm,
+        TOOL_DIAMETER_MM,
+        DEFAULT_TIERS,
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
 
     assert len(parts) == 1
     assert parts[0].tier == Tier.BLOCK

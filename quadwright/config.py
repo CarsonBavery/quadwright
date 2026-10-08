@@ -6,6 +6,7 @@ instead of being silently ignored.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -143,3 +144,25 @@ def load_config(path: str | Path) -> CampusConfig:
     if not isinstance(data, dict):
         raise ValueError(f"{path} must contain a YAML mapping at the top level")
     return CampusConfig.model_validate(data)
+
+
+class SpeciesConfig(_Strict):
+    """Fit data for one wood species, measured from its tolerance coupon (FR-17)."""
+
+    species: str
+    clearance_mm: float | None = Field(
+        default=None,
+        description="Tenon-to-pocket gap felt as snug-but-removable. null until the "
+        "coupon (`quadwright coupon`) has been cut and test-fit by hand.",
+    )
+    tested_on: date | None = None
+    notes: str = ""
+
+
+def load_species_config(species: str, species_dir: str | Path = "configs/species") -> SpeciesConfig:
+    """Read and validate `<species_dir>/<species>.yaml`. Raises pydantic.ValidationError."""
+    path = Path(species_dir) / f"{species}.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must contain a YAML mapping at the top level")
+    return SpeciesConfig.model_validate(data)
