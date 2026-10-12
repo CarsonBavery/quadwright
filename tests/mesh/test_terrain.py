@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from shapely.geometry import MultiPolygon, Polygon
 
-from quadwright.mesh.terrain import GroundHeightLookup, build_terrain_plate
+from quadwright.mesh.terrain import FlatGround, GroundHeightLookup, build_terrain_plate
 from quadwright.resolve.terrain import HeightGrid
 
 
@@ -110,3 +110,102 @@ def test_fr10_min_height_under_handles_multipolygon_footprints():
     )
 
     assert result == pytest.approx(6.0)
+
+
+def test_fr10_ground_height_lookup_interpolates_between_vertices():
+    # Halfway between the 100m (6mm) and 120m (26mm) vertices -- the mesh
+    # surface there is a straight ramp, so 16mm, not either cell's value.
+    grid = HeightGrid(np.array([[100.0, 120.0]] * 2), origin_m=(0.0, 0.0), cell_size_m=10.0)
+    lookup = GroundHeightLookup(
+        grid, scale_mm_per_m=1.0, vertical_exaggeration=1.0, base_thickness_mm=6.0
+    )
+
+    assert lookup(5.0, 3.0) == pytest.approx(16.0)
+
+
+def test_fr10_ground_height_lookup_is_exactly_the_mesh_surface():
+    # Compare against the triangles the mesh actually has (including which
+    # way each cell's diagonal runs): find the upward-facing triangle
+    # above each random point and interpolate on it directly.
+    rng = np.random.default_rng(1)
+    grid = HeightGrid(100 + rng.random((4, 5)) * 30, origin_m=(0.0, 0.0), cell_size_m=10.0)
+    kwargs = dict(scale_mm_per_m=0.5, vertical_exaggeration=2.0, base_thickness_mm=6.0)
+    mesh = build_terrain_plate(grid, **kwargs)
+    lookup = GroundHeightLookup(grid, **kwargs)
+    # Outward normals: top faces point (at least partly) up, walls exactly sideways.
+    top_triangles = mesh.triangles[mesh.face_normals[:, 2] > 1e-9]
+
+    for x, y in rng.random((50, 2)) * [20.0, 15.0]:  # the mesh spans 4x3 cells of 5mm
+        assert lookup(x, y) == pytest.approx(_mesh_surface_z(top_triangles, x, y), abs=1e-6)
+
+
+def _mesh_surface_z(triangles: np.ndarray, x: float, y: float) -> float:
+    """z of the triangle whose XY shadow contains (x, y), by 2D barycentric coordinates."""
+    for a, b, c in triangles:
+        det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        wa = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det
+        wb = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det
+        wc = 1 - wa - wb
+        if min(wa, wb, wc) >= -1e-9:
+            return wa * a[2] + wb * b[2] + wc * c[2]
+    raise AssertionError(f"no surface triangle above ({x}, {y})")
+
+
+def test_fr10_min_height_under_finds_a_dip_no_footprint_vertex_touches():
+    # A bowl: high all around, one low vertex in the middle. A footprint
+    # covering the whole bowl has every corner on high ground -- only
+    # checking interior mesh vertices finds the 6mm floor.
+    heights = np.full((3, 3), 120.0)
+    heights[1, 1] = 100.0
+    grid = HeightGrid(heights, origin_m=(0.0, 0.0), cell_size_m=10.0)
+    lookup = GroundHeightLookup(
+        grid, scale_mm_per_m=1.0, vertical_exaggeration=1.0, base_thickness_mm=6.0
+    )
+
+    result = lookup.min_height_under(
+        Polygon([(2, 2), (18, 2), (18, 18), (2, 18)]), position_on_base=(0.0, 0.0)
+    )
+
+    assert result == pytest.approx(6.0)
+
+
+def test_fr10_min_height_under_finds_a_low_point_mid_edge():
+    # A valley running north-south through x=10: a footprint whose
+    # corners sit on both slopes still dips to the valley floor along its
+    # south and north edges, where they cross the x=10 column of vertices.
+    grid = HeightGrid(np.array([[120.0, 100.0, 120.0]] * 2), origin_m=(0.0, 0.0), cell_size_m=10.0)
+    lookup = GroundHeightLookup(
+        grid, scale_mm_per_m=1.0, vertical_exaggeration=1.0, base_thickness_mm=6.0
+    )
+
+    result = lookup.min_height_under(
+        Polygon([(5, 0), (15, 0), (15, 10), (5, 10)]), position_on_base=(0.0, 0.0)
+    )
+
+    assert result == pytest.approx(6.0)
+
+
+def test_fr21_flat_ground_is_the_same_height_everywhere():
+    ground = FlatGround(top_mm=6.0)
+    footprint = Polygon([(0, 0), (40, 0), (40, 40), (0, 40)])
+
+    assert ground(123.0, 45.0) == 6.0
+    assert ground.min_height_under(footprint, position_on_base=(100.0, 100.0)) == 6.0
+
+
+def test_fr10_terrain_block_is_a_consistent_outward_facing_solid():
+    # Regression: the side walls used to be wound inward while the top
+    # and bottom faced out -- watertight, but not a valid volume, and the
+    # final volume-sign check then flipped the top surface to face down.
+    rng = np.random.default_rng(0)
+    grid = HeightGrid(100 + rng.random((5, 7)) * 20, origin_m=(0.0, 0.0), cell_size_m=3.0)
+    mesh = build_terrain_plate(
+        grid, scale_mm_per_m=2.0, vertical_exaggeration=1.5, base_thickness_mm=6.0
+    )
+
+    assert mesh.is_winding_consistent
+    assert mesh.is_volume
+    top_faces = ~np.all(np.isclose(mesh.triangles[:, :, 2], 0.0), axis=1) & (
+        np.abs(mesh.face_normals[:, 2]) > 0.5
+    )
+    assert np.all(mesh.face_normals[top_faces, 2] > 0)
