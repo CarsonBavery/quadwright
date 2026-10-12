@@ -16,6 +16,7 @@ from quadwright.export.kit import write_kit
 from quadwright.fab.coupon import build_coupon, build_manifest
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
 from quadwright.geo.render import render_footprints, render_heightmap
+from quadwright.joinery.cut import boss_for_joint, pocket_cutter_for_part
 from quadwright.joinery.tenons import MissingClearanceError
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
@@ -142,25 +143,26 @@ def audit(config: Path = ConfigArg) -> None:
 def build(config: Path = ConfigArg) -> None:
     """Write the campus config's requested `outputs:`.
 
-    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18.)
+    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18, FR-19.)
 
-    part_stl: merged, tiered part STLs, block-local (ADR-0003). base_stl:
-    a contoured terrain block when campus.lidar_project is set and
-    cached (run `fetch` first), a flat slab otherwise -- terrain changes
-    what parts sit on, not the machining files themselves. tier_report:
-    a parts-by-tier summary (FR-12). heightmap: a colorized PNG of the
-    elevation grid -- only possible when campus.lidar_project is set
-    (prints a warning and skips otherwise, rather than failing the
-    whole build). setup_sheets: a per-part machining checklist, from
-    each part's tier-derived Setups (FR-16) -- the plan, not yet
-    rendered per-setup drawings.
+    part_stl: merged, tiered part STLs, block-local (ADR-0003), each with
+    its integral tenon/dowel boss unioned on (FR-19). base_stl: a
+    contoured terrain block when campus.lidar_project is set and cached
+    (run `fetch` first), a flat slab with matching pockets cut in
+    otherwise -- a sloped terrain block skips pocket-cutting for now
+    (prints a warning), since there's no flat top to cut a vertical
+    pocket into yet. tier_report: a parts-by-tier summary (FR-12).
+    heightmap: a colorized PNG of the elevation grid -- only possible
+    when campus.lidar_project is set (prints a warning and skips
+    otherwise, rather than failing the whole build). setup_sheets: a
+    per-part machining checklist, from each part's tier-derived Setups
+    (FR-16) -- the plan, not yet rendered per-setup drawings.
     data/interim/<campus>/kit.json (FR-13) always gets written -- it's
     the pipeline's own contract, not a user-selectable output.
 
     Each part's Joint (tenon or dowel fallback, FR-18) needs that species'
     measured clearance_mm from configs/species/<species>.yaml -- run
-    `quadwright coupon` first if it's still null. Cutting the matching
-    pocket into base_stl itself comes in a later milestone.
+    `quadwright coupon` first if it's still null.
     """
     cfg = load_config(config)
     buildings = _load_campus_buildings(cfg, config)
@@ -193,7 +195,8 @@ def build(config: Path = ConfigArg) -> None:
         parts_dir = out_dir / "parts"
         parts_dir.mkdir(parents=True, exist_ok=True)
         for part in parts:
-            extrude_box(part.footprint_local, part.height_mm).export(parts_dir / f"{part.id}.stl")
+            box = extrude_box(part.footprint_local, part.height_mm)
+            box.union(boss_for_joint(part.joint)).export(parts_dir / f"{part.id}.stl")
         typer.secho(f"Wrote {len(parts)} part STL(s) to {parts_dir}", fg=typer.colors.GREEN)
 
     # Loaded once, at most -- building it reads every cached LIDAR tile,
@@ -206,7 +209,18 @@ def build(config: Path = ConfigArg) -> None:
     if "base_stl" in cfg.outputs:
         out_dir.mkdir(parents=True, exist_ok=True)
         base_path = out_dir / "base.stl"
-        _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid).export(base_path)
+        base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid)
+        if terrain_grid is None:
+            cutters = [pocket_cutter_for_part(part, BASE_PLATE_THICKNESS_MM) for part in parts]
+            if cutters:
+                base_mesh = base_mesh.difference(cutters)
+        else:
+            typer.secho(
+                f"{cfg.campus.name}'s base_stl is a contoured terrain block; skipping "
+                "joinery pockets for now (flat bases only).",
+                fg=typer.colors.YELLOW,
+            )
+        base_mesh.export(base_path)
         typer.secho(f"Wrote {base_path}", fg=typer.colors.GREEN)
 
     if "heightmap" in cfg.outputs:

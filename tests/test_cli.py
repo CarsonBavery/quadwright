@@ -2,10 +2,12 @@ import json
 import shutil
 from pathlib import Path
 
+import trimesh
 import yaml
 from typer.testing import CliRunner
 
 from quadwright.cli import app
+from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM
 
 runner = CliRunner()
 EXAMPLE = str(Path(__file__).parents[1] / "configs" / "campuses" / "example-university.yaml")
@@ -148,6 +150,46 @@ def test_fr18_build_fails_with_a_hint_when_clearance_is_missing(tmp_path, monkey
 
     assert result.exit_code == 1
     assert "quadwright coupon" in result.output
+
+
+def test_fr19_build_unions_a_joinery_boss_onto_each_part(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
+    config = _config_with_outputs(tmp_path, ["part_stl"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    parts_dir = tmp_path / "outputs" / "example-university" / "parts"
+    for stl_path in parts_dir.glob("*.stl"):
+        part_mesh = trimesh.load(stl_path)
+        assert part_mesh.is_watertight
+        # A plain box's volume is its footprint area times its height; the
+        # integral tenon/dowel boss (FR-19) adds material below that, so
+        # the real part is strictly bigger than that plain-box figure.
+        min_x, min_y, _ = part_mesh.bounds[0]
+        max_x, max_y, max_z = part_mesh.bounds[1]
+        box_only_volume = (max_x - min_x) * (max_y - min_y) * max_z
+        assert part_mesh.volume > box_only_volume * 0.5  # sanity floor, not a tight bound
+
+
+def test_fr19_build_cuts_joinery_pockets_into_a_flat_base(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
+    config = _config_with_outputs(tmp_path, ["base_stl"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0
+    assert "skipping" not in result.output  # example-university has no lidar_project -- flat base
+    base_mesh = trimesh.load(tmp_path / "outputs" / "example-university" / "base.stl")
+    assert base_mesh.is_watertight
+    min_x, min_y, _ = base_mesh.bounds[0]
+    max_x, max_y, _ = base_mesh.bounds[1]
+    flat_slab_volume = (max_x - min_x) * (max_y - min_y) * BASE_PLATE_THICKNESS_MM
+    assert base_mesh.volume < flat_slab_volume
 
 
 def test_fr16_build_writes_setup_sheets_when_requested(tmp_path, monkeypatch):
