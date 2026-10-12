@@ -245,3 +245,21 @@ def test_fr14_build_always_writes_kit_json(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert (tmp_path / "data" / "interim" / "example-university" / "kit.json").exists()
+
+
+def test_fr21_build_writes_the_assembled_model_when_requested(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
+    config = _config_with_outputs(tmp_path, ["model_glb", "model_png"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0, result.output
+    out_dir = tmp_path / "outputs" / "example-university"
+    assert (out_dir / "model.png").stat().st_size > 0
+    scene = trimesh.load(out_dir / "model.glb")
+    assert "base" in scene.geometry
+    assert len(scene.geometry) > 1  # the base plus at least one building
+    # The model needs a base to sit on, but base_stl wasn't requested.
+    assert not (out_dir / "base.stl").exists()

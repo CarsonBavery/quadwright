@@ -13,18 +13,25 @@ from shapely.geometry import Polygon
 from quadwright import __version__
 from quadwright.config import CampusConfig, load_config, load_species_config
 from quadwright.export.kit import write_kit
+from quadwright.export.scene import build_campus_scene, place_buildings, write_glb
 from quadwright.fab.coupon import build_coupon, build_manifest
 from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_campus_boundary
-from quadwright.geo.render import render_footprints, render_heightmap
+from quadwright.geo.render import render_footprints, render_heightmap, render_model
 from quadwright.joinery.cut import boss_for_joint, pocket_cutter_for_part
 from quadwright.joinery.tenons import MissingClearanceError
 from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
-from quadwright.mesh.terrain import build_terrain_plate
+from quadwright.mesh.terrain import (
+    FlatGround,
+    GroundHeightLookup,
+    GroundSurface,
+    build_terrain_plate,
+)
 from quadwright.model import Building, Kit
 from quadwright.parts.merge import build_parts
 from quadwright.parts.report import build_tier_report
 from quadwright.parts.sheets import build_setup_sheets
+from quadwright.resolve.lidar_heights import apply_lidar_heights, measure_building_heights
 from quadwright.resolve.terrain import HeightGrid, build_height_grid
 from quadwright.sources.lidar import fetch_campus_lidar
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
@@ -94,9 +101,26 @@ def _load_campus_buildings(cfg: CampusConfig, config_path: Path) -> list[Buildin
 
     boundary_path = Path("data/raw") / cfg.campus.name / "boundary.geojson"
     boundary = load_campus_boundary(boundary_path) if boundary_path.exists() else None
-    return load_buildings(
+    buildings = load_buildings(
         raw_path, cfg.campus.bbox, cfg.heights, boundary, cfg.campus.include_outside_boundary
     )
+
+    # FR-20: replace estimated heights with measured ones when LIDAR is
+    # cached. Silently skipped otherwise -- `build` already warns where
+    # missing LIDAR matters, and a campus without a lidar_project is valid.
+    lidar_paths = _cached_lidar_paths(cfg)
+    if lidar_paths:
+        measured = measure_building_heights(lidar_paths, buildings, cfg.campus.bbox)
+        buildings = apply_lidar_heights(buildings, measured)
+    return buildings
+
+
+def _cached_lidar_paths(cfg: CampusConfig) -> list[Path]:
+    """The campus's cached LIDAR tiles, or [] if it has no lidar_project or none are fetched."""
+    if not cfg.campus.lidar_project:
+        return []
+    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
+    return sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
 
 
 @app.command()
@@ -143,7 +167,7 @@ def audit(config: Path = ConfigArg) -> None:
 def build(config: Path = ConfigArg) -> None:
     """Write the campus config's requested `outputs:`.
 
-    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18, FR-19.)
+    (FR-06, FR-07, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18, FR-19, FR-20, FR-21.)
 
     part_stl: merged, tiered part STLs, block-local (ADR-0003), each with
     its integral tenon/dowel boss unioned on (FR-19). base_stl: a
@@ -157,6 +181,9 @@ def build(config: Path = ConfigArg) -> None:
     otherwise, rather than failing the whole build). setup_sheets: a
     per-part machining checklist, from each part's tier-derived Setups
     (FR-16) -- the plan, not yet rendered per-setup drawings.
+    model_glb / model_png: the assembled campus -- base plus every
+    building at its own position, height, and ground level (FR-21) -- as
+    a 3D file at real physical size, and as a rendered picture.
     data/interim/<campus>/kit.json (FR-13) always gets written -- it's
     the pipeline's own contract, not a user-selectable output.
 
@@ -202,26 +229,52 @@ def build(config: Path = ConfigArg) -> None:
     # Loaded once, at most -- building it reads every cached LIDAR tile,
     # so base_stl and heightmap share one grid instead of each paying
     # that cost separately.
+    wants_model = "model_glb" in cfg.outputs or "model_png" in cfg.outputs
+    needs_base = "base_stl" in cfg.outputs or wants_model
     terrain_grid: HeightGrid | None = None
-    if ("base_stl" in cfg.outputs or "heightmap" in cfg.outputs) and cfg.campus.lidar_project:
+    if (needs_base or "heightmap" in cfg.outputs) and cfg.campus.lidar_project:
         terrain_grid = _load_terrain_grid(cfg, scale_mm_per_m)
 
-    if "base_stl" in cfg.outputs:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        base_path = out_dir / "base.stl"
+    base_mesh: trimesh.Trimesh | None = None
+    if needs_base:
         base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid)
         if terrain_grid is None:
             cutters = [pocket_cutter_for_part(part, BASE_PLATE_THICKNESS_MM) for part in parts]
             if cutters:
                 base_mesh = base_mesh.difference(cutters)
-        else:
+        elif "base_stl" in cfg.outputs:
             typer.secho(
                 f"{cfg.campus.name}'s base_stl is a contoured terrain block; skipping "
                 "joinery pockets for now (flat bases only).",
                 fg=typer.colors.YELLOW,
             )
+
+    if "base_stl" in cfg.outputs:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        base_path = out_dir / "base.stl"
         base_mesh.export(base_path)
         typer.secho(f"Wrote {base_path}", fg=typer.colors.GREEN)
+
+    if wants_model:
+        ground: GroundSurface = (
+            FlatGround(BASE_PLATE_THICKNESS_MM)
+            if terrain_grid is None
+            else GroundHeightLookup(
+                terrain_grid,
+                scale_mm_per_m,
+                cfg.scale.vertical_exaggeration,
+                BASE_PLATE_THICKNESS_MM,
+            )
+        )
+        placed = place_buildings(buildings, footprints_mm, heights_mm, parts, ground)
+        scene = build_campus_scene(base_mesh, placed)
+        if "model_glb" in cfg.outputs:
+            glb_path = write_glb(scene, out_dir / "model.glb")
+            typer.secho(f"Wrote {glb_path}", fg=typer.colors.GREEN)
+        if "model_png" in cfg.outputs:
+            png_path = out_dir / "model.png"
+            render_model(scene, png_path, title=f"{cfg.campus.name}: {len(buildings)} buildings")
+            typer.secho(f"Wrote {png_path}", fg=typer.colors.GREEN)
 
     if "heightmap" in cfg.outputs:
         if terrain_grid is None:
@@ -262,8 +315,7 @@ def build(config: Path = ConfigArg) -> None:
 
 def _load_terrain_grid(cfg: CampusConfig, scale_mm_per_m: float) -> HeightGrid:
     """Load and grid cached LIDAR tiles. Only call this when campus.lidar_project is set."""
-    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
-    lidar_paths = sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
+    lidar_paths = _cached_lidar_paths(cfg)
     if not lidar_paths:
         typer.secho(f"No cached LIDAR for {cfg.campus.name}.", fg=typer.colors.RED, err=True)
         typer.echo("Run first: quadwright fetch", err=True)
