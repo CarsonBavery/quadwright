@@ -1,0 +1,44 @@
+# University of Wisconsin-Madison main campus. bbox is the envelope of
+# OSM relation 7144092 (`ox.geocode_to_gdf("University of Wisconsin-Madison")`),
+# ~4.2 x 2.8 km -- about 1.5:1, so it fills a 450 x 300 plate with little waste.
+# The polygon is only ~4 km^2 of that rectangle, so boundary_query does most
+# of the work: of 3052 OSM buildings in the bbox, 474 are on campus (the
+# rest are downtown, State Street, and the Langdon/Regent neighborhoods).
+# It includes Eagle Heights/University Houses in the northwest corner.
+
+campus:
+  name: uw-madison
+  bbox: [-89.445974, 43.067811, -89.394104, 43.092758]   # west, south, east, north
+  boundary_query: "University of Wisconsin-Madison"
+  include_outside_boundary: []   # add real-but-technically-outside places here as you find them
+  # 2024 Dane County capture. WI_4CountyStatewide_2017_A17/WI_DaneCo_2017 also
+  # covers campus, but FR-20 skips buildings with no roof returns, so the
+  # newer scan measures more of the buildings put up since 2017.
+  lidar_project: "WI_5County_B24/WI_5County_2_B24"
+
+scale:
+  target_size_mm: [450, 300]
+  # Madison's campus is flatter than Charlotte's except Bascom Hill and
+  # Observatory Hill; 1.5x keeps those readable without caricaturing them.
+  vertical_exaggeration: 1.5
+
+tool:
+  diameter_mm: 3.175
+  type: flat_end_mill
+
+materials:
+  base: walnut
+  buildings: maple
+
+heights:
+  default_m: 12
+  meters_per_level: 3.5
+
+tiers:
+  merge_below_tool_diameters: 3
+  rotate_above_tool_diameters: 20
+
+roofs:
+  engine: rules
+
+outputs: [part_stl, base_stl, heightmap, setup_sheets, tier_report, model_glb, model_png]
