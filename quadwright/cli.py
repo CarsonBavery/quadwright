@@ -19,7 +19,12 @@ from quadwright.geo.footprints import campus_bbox_local, load_buildings, load_ca
 from quadwright.geo.render import render_footprints, render_heightmap, render_model
 from quadwright.joinery.cut import boss_for_joint, pocket_cutter_for_part
 from quadwright.joinery.tenons import MissingClearanceError
-from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
+from quadwright.mesh.extrude import (
+    BASE_PLATE_THICKNESS_MM,
+    base_stock_mm,
+    build_base_plate,
+    extrude_box,
+)
 from quadwright.mesh.scale import compute_scale_mm_per_m, scale_buildings, to_model_mm
 from quadwright.mesh.terrain import (
     FlatGround,
@@ -235,6 +240,7 @@ def build(config: Path = ConfigArg) -> None:
     if (needs_base or "heightmap" in cfg.outputs) and cfg.campus.lidar_project:
         terrain_grid = _load_terrain_grid(cfg, scale_mm_per_m)
 
+    report: dict[str, float | int] = {"building_count": len(buildings), "part_count": len(parts)}
     base_mesh: trimesh.Trimesh | None = None
     if needs_base:
         base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid)
@@ -248,6 +254,15 @@ def build(config: Path = ConfigArg) -> None:
                 "joinery pockets for now (flat bases only).",
                 fg=typer.colors.YELLOW,
             )
+        # FR-22: the blank this campus's base must be cut from -- the 23mm
+        # minimum floor plus however much the topography rises above it.
+        stock_mm = base_stock_mm(base_mesh)
+        report["base_floor_mm"] = BASE_PLATE_THICKNESS_MM
+        report["base_stock_mm"] = round(stock_mm, 2)
+        typer.echo(
+            f"Base stock: {stock_mm:.1f} mm ({BASE_PLATE_THICKNESS_MM:g} mm floor + "
+            f"{stock_mm - BASE_PLATE_THICKNESS_MM:.1f} mm of terrain relief)"
+        )
 
     if "base_stl" in cfg.outputs:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -305,7 +320,7 @@ def build(config: Path = ConfigArg) -> None:
         campus=cfg.campus.name,
         base_plate=base_outline_mm,
         parts=parts,
-        report={"building_count": len(buildings), "part_count": len(parts)},
+        report=report,
     )
     kit_path = write_kit(kit, Path("data/interim") / cfg.campus.name / "kit.json")
     typer.secho(f"Wrote {kit_path}", fg=typer.colors.GREEN)

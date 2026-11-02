@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 import trimesh
 import yaml
 from typer.testing import CliRunner
@@ -245,6 +246,23 @@ def test_fr14_build_always_writes_kit_json(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert (tmp_path / "data" / "interim" / "example-university" / "kit.json").exists()
+
+
+def test_fr22_build_reports_the_base_stock_thickness(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
+    config = _config_with_outputs(tmp_path, ["base_stl"])
+
+    result = runner.invoke(app, ["build", config])
+
+    assert result.exit_code == 0, result.output
+    assert "Base stock: 23.0 mm" in result.output  # example-university: flat, no relief
+    kit = json.loads(
+        (tmp_path / "data" / "interim" / "example-university" / "kit.json").read_text()
+    )
+    assert kit["report"]["base_floor_mm"] == BASE_PLATE_THICKNESS_MM
+    assert kit["report"]["base_stock_mm"] == pytest.approx(BASE_PLATE_THICKNESS_MM)
 
 
 def test_fr21_build_writes_the_assembled_model_when_requested(tmp_path, monkeypatch):

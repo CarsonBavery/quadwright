@@ -12,7 +12,11 @@ from __future__ import annotations
 import trimesh
 from shapely.geometry import MultiPolygon, Polygon
 
-BASE_PLATE_THICKNESS_MM = 6.0  # PLACEHOLDER -- picked to comfortably fit a 2mm joinery pocket
+# Carson's minimum base thickness: the thinnest the base may be anywhere.
+# A flat slab is exactly this thick; a terrain block (quadwright.mesh.terrain)
+# has this much wood under its *lowest* point and rises with the topography
+# above it, so each campus needs a thicker blank -- see base_stock_mm.
+BASE_PLATE_THICKNESS_MM = 23.0
 
 
 def extrude_box(footprint_mm: Polygon | MultiPolygon, height_mm: float) -> trimesh.Trimesh:
@@ -36,3 +40,14 @@ def build_base_plate(
 ) -> trimesh.Trimesh:
     """Extrude the campus outline into the flat slab every part sits on."""
     return trimesh.creation.extrude_polygon(outline_mm, thickness_mm)
+
+
+def base_stock_mm(base_mesh: trimesh.Trimesh) -> float:
+    """How thick a blank the base must be milled from, in mm.
+
+    Every base (flat slab or terrain block) has its flat bottom at z=0,
+    so the stock needed is just its highest point: BASE_PLATE_THICKNESS_MM
+    for a flat slab, that floor plus the campus's scaled relief for terrain.
+    Pockets are cut downward from the top, so they never change this.
+    """
+    return float(base_mesh.bounds[1][2])

@@ -13,10 +13,10 @@ from shapely.affinity import translate
 from quadwright.mesh.extrude import extrude_box
 from quadwright.model import Joint, Part
 
-# PLACEHOLDER -- not measured. 2mm keeps a comfortable 4mm of material
-# above and below the pocket on today's 6mm BASE_PLATE_THICKNESS_MM
-# (quadwright.mesh.extrude) -- the coupon's own 10mm pocket (fab/coupon.py)
-# assumed a dedicated 15mm-thick test blank, not this base plate.
+# PLACEHOLDER -- not measured. Leaves 21mm of wood under the pocket on
+# the 23mm minimum BASE_PLATE_THICKNESS_MM (quadwright.mesh.extrude), so
+# there's room to go deeper if a 2mm tenon registers too loosely -- the
+# coupon's own 10mm pocket (fab/coupon.py) is the other reference point.
 POCKET_DEPTH_MM = 2.0
 
 # PLACEHOLDER -- not sized against real dowel stock yet.

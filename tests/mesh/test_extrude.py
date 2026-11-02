@@ -1,9 +1,17 @@
 """FR-06: extrude model-scale footprints and the base plate into meshes."""
 
+import numpy as np
 import pytest
 from shapely.geometry import MultiPolygon, Polygon
 
-from quadwright.mesh.extrude import BASE_PLATE_THICKNESS_MM, build_base_plate, extrude_box
+from quadwright.mesh.extrude import (
+    BASE_PLATE_THICKNESS_MM,
+    base_stock_mm,
+    build_base_plate,
+    extrude_box,
+)
+from quadwright.mesh.terrain import build_terrain_plate
+from quadwright.resolve.terrain import HeightGrid
 
 SQUARE_MM = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
 
@@ -32,3 +40,20 @@ def test_fr06_extrude_box_handles_multipolygon_footprints():
     mesh = extrude_box(footprint, height_mm=25.0)
 
     assert mesh.volume == pytest.approx((SQUARE_MM.area + other_square.area) * 25.0)
+
+
+def test_fr22_base_floor_is_at_least_23mm():
+    assert BASE_PLATE_THICKNESS_MM >= 23.0
+
+
+def test_fr22_flat_base_stock_is_just_the_floor():
+    assert base_stock_mm(build_base_plate(SQUARE_MM)) == pytest.approx(BASE_PLATE_THICKNESS_MM)
+
+
+def test_fr22_terrain_base_stock_is_floor_plus_scaled_relief():
+    # 10m of real relief at 0.5 mm/m and 2x exaggeration -> 10mm above the floor.
+    grid = HeightGrid(np.array([[100.0, 110.0], [100.0, 110.0]]), (0.0, 0.0), cell_size_m=10.0)
+    plate = build_terrain_plate(
+        grid, scale_mm_per_m=0.5, vertical_exaggeration=2.0, base_thickness_mm=23.0
+    )
+    assert base_stock_mm(plate) == pytest.approx(23.0 + 10.0)
