@@ -43,9 +43,13 @@ This is a learning project. Explain non-obvious code in comments.
 
 ## Current state
 Model stage only: no mill, so placeholder fab values (clearance_mm 0.15,
-pocket depth, plate thickness) are expected, not blockers.
-Done: M0-M14, M5 Joinery (FR-18 decision + FR-19 cutting). In open PRs:
-FR-20/21 LIDAR heights + 3D model (#34), UW-Madison config (#37, stacked
-on #34), LIDAR download fix (#35), dowel placement fix (#36).
+pocket depth) are expected, not blockers.
+Carson's fab decisions (2026-11-02): base floor is 23mm minimum under the
+lowest terrain point (FR-22); buildings merge only if they share a wall
+or are <= 0.5mm apart at model scale, and parts narrower than the bit
+are dropped and listed (FR-23, ADR-0006).
+Done: M0-M14, M5 Joinery, FR-20/21. Open stack: #39 base floor -> #40
+merge rule -> #41 dowels-only-when-they-fit -> #42 LIDAR retry/manifest.
+unc-charlotte builds clean: 109 parts, all STLs watertight, 33.6mm stock.
+uw-madison LIDAR is only partly fetched (USGS 429 quota); re-run fetch.
 Next: Phase 1 of docs/ROADMAP.md, starting with M15 `quadwright check`.
-M16 (plinth parts) changes ADR-0004's design, so propose a plan first.
