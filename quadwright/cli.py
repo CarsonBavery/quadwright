@@ -39,7 +39,11 @@ from quadwright.parts.report import build_tier_report
 from quadwright.parts.sheets import build_setup_sheets
 from quadwright.resolve.lidar_heights import apply_lidar_heights, measure_building_heights
 from quadwright.resolve.terrain import HeightGrid, build_height_grid
-from quadwright.sources.lidar import fetch_campus_lidar
+from quadwright.sources.lidar import (
+    IncompleteLidarError,
+    cached_lidar_tiles,
+    fetch_campus_lidar,
+)
 from quadwright.sources.osm import fetch_buildings, fetch_campus_boundary
 
 app = typer.Typer(help="Quadwright: wooden campus kits from open map data.", no_args_is_help=True)
@@ -122,11 +126,19 @@ def _load_campus_buildings(cfg: CampusConfig, config_path: Path) -> list[Buildin
 
 
 def _cached_lidar_paths(cfg: CampusConfig) -> list[Path]:
-    """The campus's cached LIDAR tiles, or [] if it has no lidar_project or none are fetched."""
+    """The campus's cached LIDAR tiles, or [] if it has no lidar_project or none are fetched.
+
+    Exits with a hint when a fetch was cut short (FR-10): a partial tile
+    set would build terrain and heights that look fine and are wrong.
+    """
     if not cfg.campus.lidar_project:
         return []
-    lidar_dir = Path("data/raw") / cfg.campus.name / "lidar"
-    return sorted(lidar_dir.glob("*.laz")) if lidar_dir.exists() else []
+    try:
+        return cached_lidar_tiles(Path("data/raw") / cfg.campus.name / "lidar")
+    except IncompleteLidarError as exc:
+        typer.secho(f"{cfg.campus.name}: {exc}.", fg=typer.colors.RED, err=True)
+        typer.echo("Run `quadwright fetch` again -- it resumes, keeping cached tiles.", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

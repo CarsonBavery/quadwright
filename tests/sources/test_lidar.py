@@ -1,5 +1,10 @@
 """FR-10: fetch and cache LIDAR point cloud tiles, without hitting the network."""
 
+import json
+
+import pytest
+import requests
+
 from quadwright.config import CampusArea
 from quadwright.sources import lidar
 
@@ -122,7 +127,8 @@ def test_fr10_interrupted_download_leaves_no_cached_tile(tmp_path, monkeypatch):
         raise AssertionError("the dropped connection should propagate")
 
     lidar_dir = tmp_path / "example-university" / "lidar"
-    assert list(lidar_dir.iterdir()) == []  # no truncated .laz, no stray .part
+    # No truncated .laz, no stray .part -- just the manifest of what's still owed.
+    assert [p.name for p in lidar_dir.iterdir()] == [lidar.MANIFEST_NAME]
 
 
 def test_fr10_retry_after_interrupted_download_fetches_the_tile_again(tmp_path, monkeypatch):
@@ -159,3 +165,140 @@ def test_fr10_cache_dir_layout_matches_other_fetches(tmp_path, monkeypatch):
     _patch_requests_get(monkeypatch, [])
     paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
     assert paths[0] == tmp_path / "example-university" / "lidar" / "inside_tile.laz"
+
+
+def _http_error(status: int, retry_after: str | None = None) -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = status
+    if retry_after is not None:
+        response.headers["Retry-After"] = retry_after
+    return requests.HTTPError(response=response)
+
+
+class _FailingResponse(_FakeResponse):
+    def __init__(self, error: requests.HTTPError):
+        super().__init__()
+        self._error = error
+
+    def raise_for_status(self):
+        raise self._error
+
+
+def _patch_tile_responses(monkeypatch, tile_responses: list, sleeps: list[float]):
+    """Index/links as usual; each tile request pops the next scripted response."""
+
+    def fake_get(url, timeout=None, stream=False):
+        if url.endswith(".vpc"):
+            return _FakeResponse(json_body=_fake_index())
+        if url.endswith("0_file_download_links.txt"):
+            return _FakeResponse(text_body=_fake_links_text())
+        return tile_responses.pop(0)
+
+    monkeypatch.setattr(lidar, "requests", type("_R", (), {"get": staticmethod(fake_get)}))
+    monkeypatch.setattr(lidar.time, "sleep", sleeps.append)
+
+
+def test_fr10_rate_limited_download_waits_and_retries(tmp_path, monkeypatch):
+    sleeps: list[float] = []
+    responses = [
+        _FailingResponse(_http_error(429)),
+        _FailingResponse(_http_error(429)),
+        _FakeResponse(content=b"fake laz bytes"),
+    ]
+    _patch_tile_responses(monkeypatch, responses, sleeps)
+
+    paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    assert paths[0].read_bytes() == b"fake laz bytes"
+    assert sleeps == [10, 20]  # exponential backoff, no Retry-After header
+
+
+def test_fr10_retry_honors_the_servers_retry_after(tmp_path, monkeypatch):
+    sleeps: list[float] = []
+    responses = [_FailingResponse(_http_error(429, retry_after="42")), _FakeResponse(content=b"x")]
+    _patch_tile_responses(monkeypatch, responses, sleeps)
+
+    lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    assert sleeps == [42.0]
+
+
+def test_fr10_does_not_retry_a_missing_tile(tmp_path, monkeypatch):
+    sleeps: list[float] = []
+    _patch_tile_responses(monkeypatch, [_FailingResponse(_http_error(404))], sleeps)
+
+    with pytest.raises(requests.HTTPError):
+        lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+    assert sleeps == []
+
+
+def test_fr10_gives_up_after_max_attempts(tmp_path, monkeypatch):
+    sleeps: list[float] = []
+    responses = [_FailingResponse(_http_error(503)) for _ in range(lidar._MAX_ATTEMPTS)]
+    _patch_tile_responses(monkeypatch, responses, sleeps)
+
+    with pytest.raises(requests.HTTPError):
+        lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+    assert len(sleeps) == lidar._MAX_ATTEMPTS - 1
+
+
+def test_fr10_fetch_writes_a_manifest_of_the_tiles_it_needs(tmp_path, monkeypatch):
+    _patch_requests_get(monkeypatch, [])
+
+    lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    manifest = tmp_path / "example-university" / "lidar" / lidar.MANIFEST_NAME
+    assert json.loads(manifest.read_text())["tiles"] == ["inside_tile.laz"]
+
+
+def test_fr10_cached_tiles_refuses_a_partial_set(tmp_path):
+    lidar_dir = tmp_path / "lidar"
+    lidar_dir.mkdir()
+    (lidar_dir / lidar.MANIFEST_NAME).write_text(json.dumps({"tiles": ["a.laz", "b.laz"]}))
+    (lidar_dir / "a.laz").write_bytes(b"x")
+
+    with pytest.raises(lidar.IncompleteLidarError, match="only 1 of 2"):
+        lidar.cached_lidar_tiles(lidar_dir)
+
+
+def test_fr10_cached_tiles_returns_a_complete_set_in_manifest_order(tmp_path):
+    lidar_dir = tmp_path / "lidar"
+    lidar_dir.mkdir()
+    (lidar_dir / lidar.MANIFEST_NAME).write_text(json.dumps({"tiles": ["b.laz", "a.laz"]}))
+    for name in ("a.laz", "b.laz"):
+        (lidar_dir / name).write_bytes(b"x")
+
+    assert [p.name for p in lidar.cached_lidar_tiles(lidar_dir)] == ["b.laz", "a.laz"]
+
+
+def test_fr10_cached_tiles_without_a_manifest_falls_back_to_what_is_there(tmp_path):
+    lidar_dir = tmp_path / "lidar"
+    lidar_dir.mkdir()
+    (lidar_dir / "old_fetch.laz").write_bytes(b"x")
+
+    assert [p.name for p in lidar.cached_lidar_tiles(lidar_dir)] == ["old_fetch.laz"]
+    assert lidar.cached_lidar_tiles(tmp_path / "never_fetched") == []
+
+
+def test_fr10_retries_a_dropped_connection(tmp_path, monkeypatch):
+    # e.g. a DNS lookup failing mid-fetch -- transient, unlike a 404.
+    sleeps: list[float] = []
+    calls = {"n": 0}
+
+    def fake_get(url, timeout=None, stream=False):
+        if url.endswith(".vpc"):
+            return _FakeResponse(json_body=_fake_index())
+        if url.endswith("0_file_download_links.txt"):
+            return _FakeResponse(text_body=_fake_links_text())
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise requests.ConnectionError("Failed to resolve 'rockyweb.usgs.gov'")
+        return _FakeResponse(content=b"fake laz bytes")
+
+    monkeypatch.setattr(lidar, "requests", type("_R", (), {"get": staticmethod(fake_get)}))
+    monkeypatch.setattr(lidar.time, "sleep", sleeps.append)
+
+    paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    assert paths[0].read_bytes() == b"fake laz bytes"
+    assert sleeps == [10]

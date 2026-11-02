@@ -281,3 +281,23 @@ def test_fr21_build_writes_the_assembled_model_when_requested(tmp_path, monkeypa
     assert len(scene.geometry) > 1  # the base plus at least one building
     # The model needs a base to sit on, but base_stl wasn't requested.
     assert not (out_dir / "base.stl").exists()
+
+
+def test_fr10_build_refuses_a_partially_fetched_lidar_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _cache_fixture_buildings(tmp_path)
+    _write_species_config(tmp_path)
+    data = yaml.safe_load(Path(EXAMPLE).read_text())
+    data["campus"]["lidar_project"] = "FAKE_STATE/FAKE_County_2020"
+    config = tmp_path / "lidar.yaml"
+    config.write_text(yaml.safe_dump(data))
+    lidar_dir = tmp_path / "data" / "raw" / "example-university" / "lidar"
+    lidar_dir.mkdir(parents=True)
+    (lidar_dir / "tiles.json").write_text(json.dumps({"tiles": ["a.laz", "b.laz", "c.laz"]}))
+    (lidar_dir / "a.laz").write_bytes(b"x")
+
+    result = runner.invoke(app, ["build", str(config)])
+
+    assert result.exit_code == 1
+    assert "only 1 of 3 LIDAR tiles" in result.output
+    assert "quadwright fetch" in result.output
