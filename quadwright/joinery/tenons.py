@@ -6,7 +6,7 @@ built-in default, because a wrong guess here is a part that doesn't seat.
 
 from __future__ import annotations
 
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, MultiPolygon, Polygon
 
 from quadwright.model import Joint
 
@@ -35,6 +35,44 @@ def _needs_dowel_fallback(footprint_local: Polygon, tool_diameter_mm: float) -> 
     return narrowest_side_mm < tool_diameter_mm * DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS
 
 
+def _dowel_points(
+    footprint_local: Polygon | MultiPolygon,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Two pin centers along the footprint's longer axis, guaranteed to land on material.
+
+    Offsetting +/- a quarter-width from the centroid works for a rectangle,
+    but a centroid can fall outside the shape: between the islands of a
+    merged MultiPolygon part, or in the notch of an L/U-shaped building.
+    On unc-charlotte that left one pin of 3 dowel parts hanging in mid-air.
+
+    Instead, draw a line along the longer axis through a point shapely
+    guarantees is inside the shape (`representative_point`), keep the
+    stretch of that line that's actually inside, and put the pins at its
+    1/4 and 3/4 marks -- for a rectangle, the same spots as before.
+    A MultiPolygon pins its largest island: pins have to share one solid
+    piece, and the biggest island has the most material to hold them.
+    """
+    if isinstance(footprint_local, MultiPolygon):
+        footprint_local = max(footprint_local.geoms, key=lambda island: island.area)
+
+    anchor = footprint_local.representative_point()
+    min_x, min_y, max_x, max_y = footprint_local.bounds
+    if (max_x - min_x) >= (max_y - min_y):
+        axis = LineString([(min_x - 1, anchor.y), (max_x + 1, anchor.y)])
+    else:
+        axis = LineString([(anchor.x, min_y - 1), (anchor.x, max_y + 1)])
+
+    # A concave shape can cut the axis into several inside stretches; use
+    # the one through the anchor so both pins sit on the same solid run.
+    inside = axis.intersection(footprint_local)
+    stretches = inside.geoms if hasattr(inside, "geoms") else [inside]
+    stretch = min(stretches, key=lambda s: s.distance(anchor))
+
+    first = stretch.interpolate(0.25, normalized=True)
+    second = stretch.interpolate(0.75, normalized=True)
+    return (first.x, first.y), (second.x, second.y)
+
+
 def build_joint(
     footprint_local: Polygon, species: str, clearance_mm: float | None, tool_diameter_mm: float
 ) -> Joint:
@@ -51,14 +89,7 @@ def build_joint(
         )
 
     if _needs_dowel_fallback(footprint_local, tool_diameter_mm):
-        center = footprint_local.centroid
-        min_x, min_y, max_x, max_y = footprint_local.bounds
-        if (max_x - min_x) >= (max_y - min_y):
-            offset = (max_x - min_x) / 4
-            dowel_points = ((center.x - offset, center.y), (center.x + offset, center.y))
-        else:
-            offset = (max_y - min_y) / 4
-            dowel_points = ((center.x, center.y - offset), (center.x, center.y + offset))
+        dowel_points = _dowel_points(footprint_local)
         return Joint(kind="dowels", clearance_mm=clearance_mm, dowel_points=dowel_points)
 
     # Same uniform inward shrink as the coupon's test tenons (fab/coupon.py):
