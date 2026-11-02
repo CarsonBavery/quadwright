@@ -70,3 +70,25 @@ def test_fr18_dowel_points_share_the_largest_island_of_a_multipolygon():
     points = _dowel_points(footprint)
 
     assert all(large.contains(Point(x, y)) for x, y in points)
+
+
+def test_fr18_pins_fit_inside_an_elongated_footprint():
+    strip = box(0, 0, 6.3, 3.1)  # room for two 3mm holes end to end
+    assert tenons._pins_fit(strip, _dowel_points(strip)) is True
+
+
+def test_fr18_pins_do_not_fit_a_small_square():
+    square = box(0, 0, 4.1, 4.1)  # the unc-charlotte case: holes overlap and overhang
+    assert tenons._pins_fit(square, _dowel_points(square)) is False
+
+
+def test_fr18_small_square_falls_back_to_a_tenon_when_pins_do_not_fit():
+    joint = build_joint(box(0, 0, 4.1, 4.1), "maple", clearance_mm=0.15, tool_diameter_mm=3.175)
+
+    assert joint.kind == "tenon"
+    assert joint.tenon_shape.bounds == pytest.approx((0.15, 0.15, 3.95, 3.95))
+
+
+def test_fr18_elongated_small_part_still_gets_dowels():
+    joint = build_joint(box(0, 0, 6.3, 3.1), "maple", clearance_mm=0.15, tool_diameter_mm=3.175)
+    assert joint.kind == "dowels"

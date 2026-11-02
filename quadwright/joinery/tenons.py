@@ -6,8 +6,9 @@ built-in default, because a wrong guess here is a part that doesn't seat.
 
 from __future__ import annotations
 
-from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 
+from quadwright.joinery.cut import DOWEL_DIAMETER_MM
 from quadwright.model import Joint
 
 
@@ -33,6 +34,22 @@ def _needs_dowel_fallback(footprint_local: Polygon, tool_diameter_mm: float) -> 
     min_x, min_y, max_x, max_y = footprint_local.bounds
     narrowest_side_mm = min(max_x - min_x, max_y - min_y)
     return narrowest_side_mm < tool_diameter_mm * DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS
+
+
+def _pins_fit(footprint_local: Polygon, dowel_points: tuple[tuple[float, float], ...]) -> bool:
+    """True when every dowel hole sits wholly under the part, and the holes don't overlap.
+
+    Checked at the base hole's full DOWEL_DIAMETER_MM (the pin itself is
+    a clearance smaller): a hole poking out past the part's wall would
+    show as a hole in the base beside the building. On unc-charlotte's
+    4mm-square parts, two 3mm holes overlapped each other and overhung
+    every wall -- a non-watertight STL, and nothing a dowel could fill.
+    """
+    radius_mm = DOWEL_DIAMETER_MM / 2
+    holes = [Point(x, y).buffer(radius_mm) for x, y in dowel_points]
+    if not all(footprint_local.contains(hole) for hole in holes):
+        return False
+    return all(a.disjoint(b) for i, a in enumerate(holes) for b in holes[i + 1 :])
 
 
 def _dowel_points(
@@ -88,9 +105,13 @@ def build_joint(
             f"then set clearance_mm in configs/species/{species}.yaml."
         )
 
+    # Dowels only when two actually fit; otherwise a small part keeps the
+    # default footprint tenon -- ADR-0004's primary joint, which shrinks
+    # to fit any outline -- rather than inventing a smaller dowel size.
     if _needs_dowel_fallback(footprint_local, tool_diameter_mm):
         dowel_points = _dowel_points(footprint_local)
-        return Joint(kind="dowels", clearance_mm=clearance_mm, dowel_points=dowel_points)
+        if _pins_fit(footprint_local, dowel_points):
+            return Joint(kind="dowels", clearance_mm=clearance_mm, dowel_points=dowel_points)
 
     # Same uniform inward shrink as the coupon's test tenons (fab/coupon.py):
     # every wall of the tenon sits clearance_mm inside the footprint, so the

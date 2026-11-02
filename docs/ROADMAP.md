@@ -57,7 +57,7 @@ runs it at the end (non-zero exit on errors). Every later milestone adds
 its own rules here. That's how the "consistently" part of the goal gets enforced.
 
 - Add `load_kit()` so the check reads the contract and doesn't re-derive anything (CLAUDE.md: kit.json is the contract).
-- Rules to start with: each part STL is watertight and **one connected body** (dowel parts too small for two pins currently fail this). Each joint lies on material. No feature is narrower than the tool unless it's tagged as engraving. The pocket doesn't break through the base. Every part's footprint fits inside the base. Parts don't overlap.
+- Rules to start with: each part STL is watertight and **one connected body**. Each joint lies on material. No feature is narrower than the tool unless it's tagged as engraving. The pocket doesn't break through the base. Every part's footprint fits inside the base. Parts don't overlap.
 - Writes `outputs/<c>/check_report.txt`. Today's UNC kit still fails some rules, which is the point: it gives a baseline to measure progress against.
 
 ### M17 Terrain-aware seating: pads and pockets in contoured bases (FR-24)
