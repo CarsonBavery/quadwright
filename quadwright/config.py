@@ -115,6 +115,15 @@ class Heights(_Strict):
 
 
 class Tiers(_Strict):
+    merge_gap_mm: float = Field(
+        default=0.5,
+        ge=0,
+        description=(
+            "Largest gap between two buildings, in model mm, that still makes them one "
+            "part (FR-23, ADR-0006). 0 merges only buildings that share a wall. Anything "
+            "farther apart stays separate, so the base keeps a wall between their pockets."
+        ),
+    )
     merge_below_tool_diameters: float = Field(default=3, gt=0)
     rotate_above_tool_diameters: float = Field(default=20, gt=0)
     overrides: dict[str, int] = Field(default_factory=dict)

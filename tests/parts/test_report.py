@@ -2,7 +2,7 @@
 
 from shapely.geometry import Polygon
 
-from quadwright.model import Part, Tier
+from quadwright.model import Building, Part, Tier
 from quadwright.parts.report import build_tier_report
 
 
@@ -76,3 +76,18 @@ def test_fr12_summarizes_species_counts():
 
     assert "maple: 2 part(s)" in report
     assert "walnut: 1 part(s)" in report
+
+
+def test_fr23_lists_buildings_skipped_as_too_narrow():
+    shed = Building(osm_id="way/9", footprint=None, name="Grounds Shed")
+    kiosk = Building(osm_id="way/10", footprint=None)
+
+    report = build_tier_report([_part("p1", Tier.BLOCK, 10.0, 5.0)], skipped=[shed, kiosk])
+
+    assert "Skipped, narrower than the tool (2 building(s)):" in report
+    assert "Grounds Shed [way/9]" in report
+    assert "(unnamed) [way/10]" in report
+
+
+def test_fr23_no_skipped_section_when_nothing_was_dropped():
+    assert "Skipped" not in build_tier_report([_part("p1", Tier.BLOCK, 10.0, 5.0)])

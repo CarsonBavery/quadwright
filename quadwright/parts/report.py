@@ -9,14 +9,20 @@ assumption this project doesn't have data for yet.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 
-from quadwright.model import Part, Tier
+from quadwright.model import Building, Part, Tier
 
 _TIER_ORDER = (Tier.HERO, Tier.ROTATED, Tier.BLOCK, Tier.MERGE)
 
 
-def build_tier_report(parts: list[Part]) -> str:
-    """Render a human-readable summary of parts grouped by tier."""
+def build_tier_report(parts: list[Part], skipped: Sequence[Building] = ()) -> str:
+    """Render a human-readable summary of parts grouped by tier.
+
+    `skipped` lists buildings left out of the kit because their part was
+    narrower than the tool (FR-23, see quadwright.parts.merge.build_parts)
+    -- printed by name so a woodworker can see which places are missing.
+    """
     lines = [f"Tier report: {len(parts)} part(s)", ""]
 
     for tier in _TIER_ORDER:
@@ -29,6 +35,10 @@ def build_tier_report(parts: list[Part]) -> str:
     lines.append("Species:")
     for species, count in Counter(p.species for p in parts).most_common():
         lines.append(f"  {species}: {count} part(s)")
+
+    if skipped:
+        lines.extend(["", f"Skipped, narrower than the tool ({len(skipped)} building(s)):"])
+        lines.extend(f"  {b.name or '(unnamed)'} [{b.osm_id}]" for b in skipped)
 
     return "\n".join(lines)
 

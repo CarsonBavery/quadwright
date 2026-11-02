@@ -5,9 +5,8 @@ It names symbols, not line numbers, so it survives edits. Update it in
 the same PR whenever a module, command, constant, or on-disk path is
 added or moves.
 
-Pending work is marked with the PR it lives in. As of 2026-11-02 the
-open stack is: #34 (LIDAR heights + 3D model) -> #37 (UW-Madison config),
-plus #35 (LIDAR download fix) and #36 (dowel placement fix) off `main`.
+Pending work is marked with the PR it lives in (none open as of
+#34-#38 merging on 2026-11-02, apart from what's noted inline).
 
 ## Pipeline at a glance
 
@@ -24,7 +23,7 @@ configs/campuses/<c>.yaml --load_config--> CampusConfig
         v                  list[Building]  (meters, UTM)
   mesh/scale.py       compute_scale_mm_per_m, scale_buildings -> footprints_mm, heights_mm (campus mm)
         v
-  parts/merge.py      build_parts: group_touching_buildings -> merge_isolated_small_parts
+  parts/merge.py      build_parts: group_nearby_buildings -> group_footprint -> drop narrower_than_tool
         |   parts/tiers.py assign_tier, parts/setups.py assign_setups,
         |   joinery/tenons.py build_joint (needs SpeciesConfig.clearance_mm)
         v                  list[Part]  (part-local mm)
@@ -69,12 +68,12 @@ uses its bounds.
 | `resolve/terrain.py` | ground grid from LAS class 2 | `HeightGrid`, `build_height_grid` (per-cell mean, `_fill_empty_cells`), `GROUND_CLASSIFICATION`, `_vertical_unit_to_meters` | `tests/resolve/test_terrain.py` |
 | `resolve/lidar_heights.py` (#34) | LoD1 heights from LAS class 6 | `measure_building_heights` (roof p70 - ground p5 in a 0.5-4 m ring), `apply_lidar_heights` (replaces only `levels`/`default`), `_PointsSortedByX` | `tests/resolve/test_lidar_heights.py` |
 | `mesh/scale.py` | m -> mm | `compute_scale_mm_per_m` (min of the two axis factors), `to_model_mm`, `scale_buildings` | `tests/mesh/test_scale.py` |
-| `mesh/extrude.py` | flat boxes, no booleans (ADR-0004) | `extrude_box` (handles MultiPolygon by concatenation), `build_base_plate`, `base_stock_mm` (blank thickness = top z, FR-22), `BASE_PLATE_THICKNESS_MM` | `tests/mesh/test_extrude.py` |
+| `mesh/extrude.py` | flat boxes, no booleans (ADR-0004) | `extrude_box` (simplifies at `_SIMPLIFY_MM` 0.001 first; handles MultiPolygon by concatenation), `build_base_plate`, `base_stock_mm` (blank thickness = top z, FR-22), `BASE_PLATE_THICKNESS_MM` | `tests/mesh/test_extrude.py` |
 | `mesh/terrain.py` | terrain solid + seating | `build_terrain_plate`, `GroundSurface` protocol, `FlatGround`, `GroundHeightLookup` (exact triangle interp, `min_height_under`) | `tests/mesh/test_terrain.py` |
-| `parts/merge.py` | buildings -> Parts | `group_touching_buildings` (O(n^2) flood fill), `merge_isolated_small_parts` (radius = tool x `merge_below`), `build_parts` | `tests/parts/test_merge.py` |
+| `parts/merge.py` | buildings -> Parts (ADR-0006) | `group_nearby_buildings` (flood fill, gap <= `tiers.merge_gap_mm` in model mm), `group_footprint` (closing + bridges -> always one Polygon), `narrower_than_tool` (dropped; CLI lists them as buildings in no part), `build_parts` | `tests/parts/test_merge.py` |
 | `parts/tiers.py` | tier rule | `assign_tier`: override > height > rotate threshold -> ROTATED; narrow side < merge threshold -> MERGE; else BLOCK | `tests/parts/test_tiers.py` |
 | `parts/setups.py` | tier -> setups | `assign_setups` (BLOCK: top; ROTATED/HERO: top + 4 sides) | `tests/parts/test_setups.py` |
-| `parts/report.py` / `sheets.py` | text outputs | `build_tier_report`, `build_setup_sheets` | `tests/parts/test_report.py`, `test_sheets.py` |
+| `parts/report.py` / `sheets.py` | text outputs | `build_tier_report` (+ skipped buildings section), `build_setup_sheets` | `tests/parts/test_report.py`, `test_sheets.py` |
 | `joinery/tenons.py` | joint *decision* | `build_joint`, `MissingClearanceError`, `_needs_dowel_fallback`, `DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS`, `_dowel_points` (#36) | `tests/joinery/test_tenons.py` |
 | `joinery/cut.py` | joint *geometry* (the only booleans besides coupon) | `boss_for_joint`, `pocket_cutter_for_part`, `POCKET_DEPTH_MM`, `DOWEL_DIAMETER_MM`, `_OVERSHOOT_MM` | `tests/joinery/test_cut.py` |
 | `fab/coupon.py` | clearance test piece | `build_coupon`, `build_manifest`, `DEFAULT_CLEARANCES_MM` | `tests/fab/test_coupon.py` |
@@ -93,6 +92,8 @@ classifier planned, `pip install -e ".[ml]"` adds scikit-learn).
 | `POCKET_DEPTH_MM` | 2.0 | `joinery/cut.py` |
 | `DOWEL_DIAMETER_MM` | 3.0 | `joinery/cut.py` |
 | `DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS` | 2.0 (TODO(carson)) | `joinery/tenons.py` |
+| `tiers.merge_gap_mm` | 0.5 (Carson, ADR-0006) | campus YAML / `config.Tiers` |
+| `_CLOSING_MARGIN_MM` | 0.01 | `parts/merge.py` |
 | `ROOF_PERCENTILE` / `GROUND_PERCENTILE` | 70 / 5 | `resolve/lidar_heights.py` |
 | `MIN_ROOF_POINTS` / `MIN_RELATIVE_DENSITY` | 10 / 0.5 | `resolve/lidar_heights.py` |
 | terrain cell size | `tool.diameter_mm / scale_mm_per_m` (~22 m at UNC) | `cli._load_terrain_grid` |
@@ -103,7 +104,7 @@ classifier planned, `pip install -e ".[ml]"` adds scikit-learn).
 | Campus | Config | Scale | 3.175 mm bit = | Cached data | Built |
 | --- | --- | --- | --- | --- | --- |
 | example-university | synthetic, no boundary/LIDAR | -- | -- | -- | CI validate only |
-| unc-charlotte | `NC_Phase_4..._Mecklenburg_2016` | ~1:7000 | ~22 m real | OSM + boundary + LIDAR | full build, 286 buildings -> 65 parts |
+| unc-charlotte | `NC_Phase_4..._Mecklenburg_2016` | ~1:7000 | ~22 m real | OSM + boundary + LIDAR | full build: 286 buildings -> 109 parts, 70 dropped; base stock 33.6 mm |
 | uw-madison (#37) | `WI_5County_B24` | ~1:9300 | ~30 m real | OSM + boundary + LIDAR | `preview` only |
 
 `data/` and `outputs/` are gitignored and can be regenerated from config +
@@ -112,7 +113,8 @@ cache. Tests never touch the network: fixtures are
 
 ## Known gaps (see docs/ROADMAP.md)
 
-- 48 of UNC's 65 parts are MultiPolygons: disconnected islands under one part ID.
+- Dowel parts too small for two pins get overlapping, overhanging pins (7 non-watertight UNC STLs).
+- 70 of UNC's 286 buildings drop out at a 3.175 mm bit (narrower than ~22 m real).
 - Terrain bases get no pockets (`build` warns and skips), so the real campuses have no joinery.
 - Parts are seated at `min_height_under` and sink into slopes. There is no flat landing pad.
 - Pocket inside corners ignore tool radius (no dogbone/corner relief).
