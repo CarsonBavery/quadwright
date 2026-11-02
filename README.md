@@ -41,8 +41,13 @@ See [docs/SETUP.md](docs/SETUP.md) for prerequisites and Claude Code tooling.
 | M10 kit.json (geometry-to-exporters contract) | Done |
 | M11 build honors outputs: (warns instead of silently ignoring) | Done |
 | M12 heightmap (colorized elevation PNG) | Done |
-| M13 Setup sheets (per-part machining checklist) | Done -- every `outputs:` kind is now implemented |
-| M5 Joinery (tenons & pockets) | Planned -- blocked on a measured `clearance_mm` (needs the coupon test) |
+| M13 Setup sheets (per-part machining checklist) | Done |
+| M14 Tolerance coupon (`quadwright coupon`) | Done |
+| M5 Joinery (tenon/dowel decision + cut into meshes) | Done -- flat bases only; uses a placeholder `clearance_mm` until a coupon is cut |
+| LIDAR building heights + assembled 3D model (FR-20, FR-21) | In review (#34) |
+| M15+ Always-buildable kits, then roofs and stepped massing | Planned -- see [docs/ROADMAP.md](docs/ROADMAP.md) |
+
+Contributors: [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md) maps every module.
 
 ## Data attribution
 

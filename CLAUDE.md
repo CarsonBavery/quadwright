@@ -34,18 +34,18 @@ This is a learning project. Explain non-obvious code in comments.
   (`gh pr create`, title + summary/test-plan body). Ask before merging.
   `gh` is installed and authenticated on this machine.
 
+## Where to look first
+- docs/PROJECT_MAP.md: every module, symbol, unit frame, placeholder
+  constant, and on-disk path. Read it before opening source files, and
+  update it in the same PR when any of those change.
+- docs/ROADMAP.md: milestones M15+, open fabrication decisions, and the
+  detail budget (why campus scale limits detail).
+
 ## Current state
-Week: 1. Last milestone: M5 Joinery, part one (quadwright/joinery/tenons.py
-build_joint, FR-18) -- each Part gets a footprint-shaped tenon or a
-two-dowel fallback, from that species' measured clearance_mm
-(configs/species/<name>.yaml). `null` raises MissingClearanceError
-with a `quadwright coupon` hint instead of ever guessing a value.
-Carson is keeping the project at the model stage for now (no mill
-available), so clearance_mm stays a per-run fixture value rather than
-a real measurement -- that's expected, not a blocker.
-Next: cut the matching tenon/pocket geometry into the actual meshes
-(part_stl's tenon boss, base_stl's pocket) -- the decision logic above
-only produces shape data today. This needs real boolean ops, which
-quadwright/mesh/extrude.py deliberately doesn't do yet (ADR-0004: "no
-boolean ops" was a choice for the box-extrusion case, not a hard rule);
-propose a plan before touching it, since it changes that design.
+Model stage only: no mill, so placeholder fab values (clearance_mm 0.15,
+pocket depth, plate thickness) are expected, not blockers.
+Done: M0-M14, M5 Joinery (FR-18 decision + FR-19 cutting). In open PRs:
+FR-20/21 LIDAR heights + 3D model (#34), UW-Madison config (#37, stacked
+on #34), LIDAR download fix (#35), dowel placement fix (#36).
+Next: Phase 1 of docs/ROADMAP.md, starting with M15 `quadwright check`.
+M16 (plinth parts) changes ADR-0004's design, so propose a plan first.
