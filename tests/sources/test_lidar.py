@@ -278,3 +278,27 @@ def test_fr10_cached_tiles_without_a_manifest_falls_back_to_what_is_there(tmp_pa
 
     assert [p.name for p in lidar.cached_lidar_tiles(lidar_dir)] == ["old_fetch.laz"]
     assert lidar.cached_lidar_tiles(tmp_path / "never_fetched") == []
+
+
+def test_fr10_retries_a_dropped_connection(tmp_path, monkeypatch):
+    # e.g. a DNS lookup failing mid-fetch -- transient, unlike a 404.
+    sleeps: list[float] = []
+    calls = {"n": 0}
+
+    def fake_get(url, timeout=None, stream=False):
+        if url.endswith(".vpc"):
+            return _FakeResponse(json_body=_fake_index())
+        if url.endswith("0_file_download_links.txt"):
+            return _FakeResponse(text_body=_fake_links_text())
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise requests.ConnectionError("Failed to resolve 'rockyweb.usgs.gov'")
+        return _FakeResponse(content=b"fake laz bytes")
+
+    monkeypatch.setattr(lidar, "requests", type("_R", (), {"get": staticmethod(fake_get)}))
+    monkeypatch.setattr(lidar.time, "sleep", sleeps.append)
+
+    paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    assert paths[0].read_bytes() == b"fake laz bytes"
+    assert sleeps == [10]

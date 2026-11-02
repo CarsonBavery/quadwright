@@ -16,7 +16,8 @@ import requests
 
 # Imported by name (not as requests.HTTPError) so tests that swap out the
 # module-level `requests` for a fake still see the real exception class.
-from requests import HTTPError, Response
+from requests import ConnectionError as RequestsConnectionError
+from requests import HTTPError, Response, Timeout
 
 from quadwright.config import CampusArea
 
@@ -30,8 +31,9 @@ _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 MANIFEST_NAME = "tiles.json"
 
 # rockyweb.usgs.gov answers 429 Too Many Requests after a few tiles in a
-# row (uw-madison stopped at 3 of 17). Those, and 5xx hiccups, are worth
-# waiting out; a 404 or 403 isn't.
+# row (uw-madison stopped at 3 of 17). Those, 5xx hiccups, and network
+# drops (a DNS lookup failed at tile 8) are worth waiting out; a 404 or
+# 403 isn't.
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 6
 _BACKOFF_BASE_S = 10  # 10, 20, 40, 80, 160s between attempts: ~5 minutes total
@@ -131,14 +133,19 @@ def _overlaps_xy(stac_bbox: list[float], campus_bbox: tuple[float, float, float,
 def _download(url: str, path: Path) -> None:
     """Download one tile, waiting out rate limits and server hiccups.
 
-    Retries only statuses in _RETRY_STATUSES, honoring the server's own
-    Retry-After when it sends one. Anything else -- and the last failed
-    attempt -- propagates, leaving the tile missing for the next fetch.
+    Retries statuses in _RETRY_STATUSES (honoring the server's own
+    Retry-After when it sends one), plus failed connections and timeouts.
+    Anything else -- and the last failed attempt -- propagates, leaving
+    the tile missing for the next fetch.
     """
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             _download_once(url, path)
             return
+        except (RequestsConnectionError, Timeout):
+            if attempt == _MAX_ATTEMPTS:
+                raise
+            time.sleep(_retry_delay_s(None, attempt))
         except HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status not in _RETRY_STATUSES or attempt == _MAX_ATTEMPTS:
