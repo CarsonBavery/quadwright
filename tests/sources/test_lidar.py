@@ -98,6 +98,63 @@ def test_fr10_second_fetch_skips_the_network_for_cached_tiles(tmp_path, monkeypa
     assert download_calls_second_run == 0  # tile already on disk, not re-downloaded
 
 
+def test_fr10_interrupted_download_leaves_no_cached_tile(tmp_path, monkeypatch):
+    # A connection that drops mid-stream: one chunk arrives, then an error.
+    class _DroppedResponse(_FakeResponse):
+        def iter_content(self, chunk_size):
+            yield b"first half"
+            raise ConnectionError("connection reset")
+
+    def fake_get(url, timeout=None, stream=False):
+        if url.endswith(".vpc"):
+            return _FakeResponse(json_body=_fake_index())
+        if url.endswith("0_file_download_links.txt"):
+            return _FakeResponse(text_body=_fake_links_text())
+        return _DroppedResponse()
+
+    monkeypatch.setattr(lidar, "requests", type("_R", (), {"get": staticmethod(fake_get)}))
+
+    try:
+        lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+    except ConnectionError:
+        pass
+    else:
+        raise AssertionError("the dropped connection should propagate")
+
+    lidar_dir = tmp_path / "example-university" / "lidar"
+    assert list(lidar_dir.iterdir()) == []  # no truncated .laz, no stray .part
+
+
+def test_fr10_retry_after_interrupted_download_fetches_the_tile_again(tmp_path, monkeypatch):
+    calls: list[str] = []
+    attempts = {"n": 0}
+
+    class _DroppedResponse(_FakeResponse):
+        def iter_content(self, chunk_size):
+            yield b"first half"
+            raise ConnectionError("connection reset")
+
+    def fake_get(url, timeout=None, stream=False):
+        calls.append(url)
+        if url.endswith(".vpc"):
+            return _FakeResponse(json_body=_fake_index())
+        if url.endswith("0_file_download_links.txt"):
+            return _FakeResponse(text_body=_fake_links_text())
+        attempts["n"] += 1
+        return _DroppedResponse() if attempts["n"] == 1 else _FakeResponse(content=b"whole tile")
+
+    monkeypatch.setattr(lidar, "requests", type("_R", (), {"get": staticmethod(fake_get)}))
+
+    try:
+        lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+    except ConnectionError:
+        pass
+    paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)
+
+    assert attempts["n"] == 2  # the failed tile wasn't mistaken for cached
+    assert paths[0].read_bytes() == b"whole tile"
+
+
 def test_fr10_cache_dir_layout_matches_other_fetches(tmp_path, monkeypatch):
     _patch_requests_get(monkeypatch, [])
     paths = lidar.fetch_campus_lidar(AREA_WITH_LIDAR, cache_dir=tmp_path)

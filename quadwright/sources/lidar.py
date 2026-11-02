@@ -73,8 +73,26 @@ def _overlaps_xy(stac_bbox: list[float], campus_bbox: tuple[float, float, float,
 
 
 def _download(url: str, path: Path) -> None:
-    with requests.get(url, timeout=_REQUEST_TIMEOUT_S, stream=True) as response:
-        response.raise_for_status()
-        with open(path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
-                f.write(chunk)
+    """Stream `url` to `path`, so that `path` only ever exists complete.
+
+    fetch_campus_lidar treats "file exists" as "tile is cached". Writing
+    straight to `path` meant a dropped connection left a truncated .laz
+    that every later fetch skipped, and the build then failed deep inside
+    the LAZ decoder. Streaming to a sibling `.part` file and renaming it
+    only after the last chunk keeps a failed download from ever looking
+    like a cached tile; the next fetch just starts that tile over.
+    """
+    partial = path.with_name(path.name + ".part")
+    try:
+        with requests.get(url, timeout=_REQUEST_TIMEOUT_S, stream=True) as response:
+            response.raise_for_status()
+            with open(partial, "wb") as f:
+                for chunk in response.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
+                    f.write(chunk)
+    except BaseException:
+        # BaseException, not Exception: Ctrl-C mid-download should clean up too.
+        partial.unlink(missing_ok=True)
+        raise
+    # replace() is atomic on one filesystem, so there's no moment where
+    # `path` exists half-written.
+    partial.replace(path)
