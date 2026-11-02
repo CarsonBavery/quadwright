@@ -61,7 +61,7 @@ uses its bounds.
 | `config.py` | YAML schema (pydantic, `extra="forbid"`) | `CampusConfig` (campus, scale, tool, materials, heights, tiers, roofs, outputs), `OutputKind`, `load_config`, `SpeciesConfig`, `load_species_config` | `tests/test_config.py` |
 | `cli.py` | typer app, `build` orchestration | `validate`, `fetch`, `preview`, `audit`, `build`, `coupon`; stubs `jig`, `sheets` (`_planned`); helpers `_load_campus_buildings`, `_cached_lidar_paths`, `_load_terrain_grid`, `_build_base` | `tests/test_cli.py` |
 | `sources/osm.py` | Overpass/Nominatim via osmnx, cache-if-exists | `fetch_buildings`, `fetch_campus_boundary` | `tests/sources/test_osm.py` (mocked) |
-| `sources/lidar.py` | USGS 3DEP tiles: `.vpc` index + `0_file_download_links.txt` | `fetch_campus_lidar`, `_overlaps_xy`, `_download` (truncation fix in #35) | `tests/sources/test_lidar.py` |
+| `sources/lidar.py` | USGS 3DEP tiles: `.vpc` index + `0_file_download_links.txt` | `fetch_campus_lidar` (writes `lidar/tiles.json` manifest first), `cached_lidar_tiles` (raises `IncompleteLidarError` on a partial set), `_download` (retries 429/5xx, `Retry-After` or 10-160 s backoff), `_download_once` (`.part` then rename) | `tests/sources/test_lidar.py` |
 | `geo/footprints.py` | normalize + reproject + boundary filter | `load_buildings`, `_in_campus_scope` (centroid-in-boundary OR `historic=*` OR named include), `load_campus_boundary`, `campus_bbox_local`, `utm_crs_for_bbox` | `tests/geo/test_footprints.py` |
 | `geo/render.py` | matplotlib PNGs | `render_footprints`, `render_heightmap`, `render_model` (#34, two panels: whole + core close-up) | `tests/geo/test_render.py` |
 | `resolve/heights.py` | rule-based height | `resolve_height`, `_parse_height_tag` | `tests/resolve/test_heights.py` |
@@ -105,7 +105,7 @@ classifier planned, `pip install -e ".[ml]"` adds scikit-learn).
 | --- | --- | --- | --- | --- | --- |
 | example-university | synthetic, no boundary/LIDAR | -- | -- | -- | CI validate only |
 | unc-charlotte | `NC_Phase_4..._Mecklenburg_2016` | ~1:7000 | ~22 m real | OSM + boundary + LIDAR | full build: 286 buildings -> 109 parts, 70 dropped; base stock 33.6 mm |
-| uw-madison (#37) | `WI_5County_B24` | ~1:9300 | ~30 m real | OSM + boundary + LIDAR | `preview` only |
+| uw-madison | `WI_5County_B24` | ~1:9600 | ~30 m real | OSM + boundary + LIDAR (17 tiles; first fetch was rate-limited at 3) | `preview` only |
 
 `data/` and `outputs/` are gitignored and can be regenerated from config +
 cache. Tests never touch the network: fixtures are
