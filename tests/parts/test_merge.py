@@ -1,12 +1,17 @@
-"""FR-07: merge touching buildings into machinable parts."""
+"""FR-07/FR-23: merge buildings that share a wall (or nearly do) into machinable parts."""
 
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from quadwright.config import Tiers
 from quadwright.joinery.tenons import MissingClearanceError
 from quadwright.model import Building, Tier
-from quadwright.parts.merge import build_parts, group_touching_buildings, merge_isolated_small_parts
+from quadwright.parts.merge import (
+    build_parts,
+    group_footprint,
+    group_nearby_buildings,
+    narrower_than_tool,
+)
 
 # Fixture value, not a fabrication claim -- these tests check build_parts'
 # own wiring (grouping, tiers, setups), not a particular species' real fit.
@@ -20,17 +25,22 @@ def _square(
     return Building(osm_id=osm_id, footprint=Polygon(corners), name=name)
 
 
+def _footprints(buildings: list[Building]) -> dict[str, Polygon]:
+    # These fixtures are already "model mm", so footprint doubles as footprint_mm.
+    return {b.osm_id: b.footprint for b in buildings}
+
+
 def test_fr07_isolated_buildings_stay_separate():
     a = _square("way/1", 0, 0)
     b = _square("way/2", 1000, 1000)  # far away, never touches
-    groups = group_touching_buildings([a, b])
+    groups = group_nearby_buildings([a, b], _footprints([a, b]), max_gap_mm=0.5)
     assert sorted(len(g) for g in groups) == [1, 1]
 
 
 def test_fr07_touching_buildings_merge_into_one_group():
     a = _square("way/1", 0, 0, size=10)
     b = _square("way/2", 10, 0, size=10)  # shares the x=10 edge with a
-    groups = group_touching_buildings([a, b])
+    groups = group_nearby_buildings([a, b], _footprints([a, b]), max_gap_mm=0.0)
     assert len(groups) == 1
     assert {bld.osm_id for bld in groups[0]} == {"way/1", "way/2"}
 
@@ -39,9 +49,61 @@ def test_fr07_transitive_touching_chain_merges_all():
     a = _square("way/1", 0, 0, size=10)
     b = _square("way/2", 10, 0, size=10)  # touches a
     c = _square("way/3", 20, 0, size=10)  # touches b, not a directly
-    groups = group_touching_buildings([a, c, b])  # order shouldn't matter
-    assert len(groups) == 1
+    groups = group_nearby_buildings([a, c, b], _footprints([a, b, c]), max_gap_mm=0.0)
+    assert len(groups) == 1  # order shouldn't matter
     assert {bld.osm_id for bld in groups[0]} == {"way/1", "way/2", "way/3"}
+
+
+def test_fr23_buildings_within_the_gap_merge():
+    a = _square("way/1", 0, 0)
+    b = _square("way/2", 10.4, 0)  # 0.4mm apart: under the 0.5mm gap
+    groups = group_nearby_buildings([a, b], _footprints([a, b]), max_gap_mm=0.5)
+    assert len(groups) == 1
+
+
+def test_fr23_buildings_beyond_the_gap_stay_separate_however_small():
+    # The old FR-08 pass would have pulled these together (both tiny, 1mm
+    # apart). ADR-0006: only shared walls or negligible gaps merge.
+    a = _square("way/1", 0, 0, size=4)
+    b = _square("way/2", 5, 0, size=4)
+    groups = group_nearby_buildings([a, b], _footprints([a, b]), max_gap_mm=0.5)
+    assert sorted(len(g) for g in groups) == [1, 1]
+
+
+def test_fr23_group_footprint_bridges_the_gap_into_one_solid():
+    a = _square("way/1", 0, 0)
+    b = _square("way/2", 10.5, 0)  # exactly the gap -- the hardest case to bridge
+
+    outline = group_footprint([a, b], _footprints([a, b]), max_gap_mm=0.5)
+
+    assert isinstance(outline, Polygon)  # one piece of wood, not two islands
+    assert outline.bounds == pytest.approx((0, 0, 20.5, 10), abs=1e-6)  # outer walls unmoved
+
+
+def test_fr23_group_footprint_bridges_corner_to_corner_neighbors():
+    # Diagonal offset: only the corners are 0.4mm apart, so no two walls
+    # face each other and a closing alone can't hold the join (the case
+    # four real unc-charlotte parts hit).
+    a = _square("way/1", 0, 0)
+    b = _square("way/2", 10.2828, 10.2828)  # corner gap = 0.2828 * sqrt(2) = 0.4mm
+
+    outline = group_footprint([a, b], _footprints([a, b]), max_gap_mm=0.5)
+
+    assert isinstance(outline, Polygon)
+    assert outline.contains(a.footprint.buffer(-0.01))
+    assert outline.contains(b.footprint.buffer(-0.01))
+
+
+def test_fr23_group_footprint_leaves_a_single_building_untouched():
+    a = _square("way/1", 0, 0)
+    assert group_footprint([a], _footprints([a]), max_gap_mm=0.5).equals(a.footprint)
+
+
+def test_fr23_narrower_than_tool():
+    assert narrower_than_tool(Polygon([(0, 0), (20, 0), (20, 3), (0, 3)]), 3.175) is True
+    assert narrower_than_tool(Polygon([(0, 0), (20, 0), (20, 4), (0, 4)]), 3.175) is False
+    sliver_pair = MultiPolygon([Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])])
+    assert narrower_than_tool(sliver_pair, 3.175) is True
 
 
 TIERS = Tiers(
@@ -160,74 +222,40 @@ def test_fr07_build_parts_assigns_sequential_ids():
 
 
 TOOL_DIAMETER_MM = 3.175
-DEFAULT_TIERS = Tiers()  # merge_below_tool_diameters=3 -> 9.525mm threshold at this tool size
 
 
-def _footprints_and_heights(buildings: list[Building], height_mm: float = 30.0):
-    footprints_mm = {b.osm_id: b.footprint for b in buildings}
-    heights_mm = {b.osm_id: height_mm for b in buildings}
-    return footprints_mm, heights_mm
-
-
-def test_fr08_merges_isolated_small_neighbors_within_search_radius():
-    # Each 5x5 square alone is tier MERGE (narrowest side 5 < 9.525), but
-    # diagonally offset so their union's bounding box is 11x11 -- clearing
-    # the threshold once combined. The gap between them (~1.4mm) is well
-    # inside the 9.525mm search radius.
-    a = _square("way/1", 0, 0, size=5)
-    b = _square("way/2", 6, 6, size=5)
-    footprints_mm, heights_mm = _footprints_and_heights([a, b])
-
-    groups = merge_isolated_small_parts(
-        [[a], [b]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS
-    )
-
-    assert len(groups) == 1
-    assert {bld.osm_id for bld in groups[0]} == {"way/1", "way/2"}
-
-
-def test_fr08_does_not_merge_across_a_gap_beyond_the_search_radius():
-    a = _square("way/1", 0, 0, size=5)
-    b = _square("way/2", 1000, 1000, size=5)  # far beyond the 9.525mm search radius
-    footprints_mm, heights_mm = _footprints_and_heights([a, b])
-
-    groups = merge_isolated_small_parts(
-        [[a], [b]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, DEFAULT_TIERS
-    )
-
-    assert sorted(len(g) for g in groups) == [1, 1]
-
-
-def test_fr08_never_absorbs_into_a_hero_neighbor():
-    # "Landmark" is tiny too, but a human already decided it's HERO -- it
-    # must keep its own identity even though it's the only nearby group.
-    tiny = _square("way/1", 0, 0, size=5)
-    landmark = _square("way/2", 6, 6, size=5, name="Landmark")
-    footprints_mm, heights_mm = _footprints_and_heights([tiny, landmark])
-    tiers = Tiers(overrides={"Landmark": 3})
-
-    groups = merge_isolated_small_parts(
-        [[tiny], [landmark]], footprints_mm, heights_mm, TOOL_DIAMETER_MM, tiers
-    )
-
-    assert sorted(len(g) for g in groups) == [1, 1]
-
-
-def test_fr07_build_parts_end_to_end_rescues_isolated_small_buildings():
-    # No tier overrides here -- exercises the real assign_tier thresholds
-    # together with both merge passes, the way `build` actually calls it.
-    a = _square("way/1", 0, 0, size=5)
-    b = _square("way/2", 6, 6, size=5)
-    footprints_mm, heights_mm = _footprints_and_heights([a, b])
+def test_fr23_build_parts_drops_parts_narrower_than_the_tool():
+    shed = _square("way/1", 0, 0, size=2)  # 2mm < 3.175mm tool
+    hall = _square("way/2", 100, 100, size=20)
+    buildings = [shed, hall]
 
     parts = build_parts(
-        [a, b],
-        footprints_mm,
-        heights_mm,
+        buildings,
+        _footprints(buildings),
+        {"way/1": 5.0, "way/2": 5.0},
         TOOL_DIAMETER_MM,
-        DEFAULT_TIERS,
+        Tiers(),
+        clearance_mm=TEST_CLEARANCE_MM,
+    )
+
+    assert [p.building_ids for p in parts] == [("way/2",)]
+    assert parts[0].id == "part-0000"  # numbered after dropping
+
+
+def test_fr23_build_parts_keeps_a_tiny_building_that_shares_a_wall():
+    # A 2mm shed is too narrow alone, but touching the hall it rides along.
+    hall = _square("way/1", 0, 0, size=20)
+    shed = _square("way/2", 20, 0, size=2)
+    buildings = [hall, shed]
+
+    parts = build_parts(
+        buildings,
+        _footprints(buildings),
+        {"way/1": 5.0, "way/2": 2.0},
+        TOOL_DIAMETER_MM,
+        Tiers(),
         clearance_mm=TEST_CLEARANCE_MM,
     )
 
     assert len(parts) == 1
-    assert parts[0].tier == Tier.BLOCK
+    assert set(parts[0].building_ids) == {"way/1", "way/2"}

@@ -15,7 +15,7 @@ RoofShape = Literal["flat", "gabled", "hipped", "dome", "other"]
 
 
 class Tier(IntEnum):
-    MERGE = 0  # too small to be its own part
+    MERGE = 0  # small (under merge_below_tool_diameters): a standalone part, top setup only
     BLOCK = 1  # top setup only
     ROTATED = 2  # top plus side setups
     HERO = 3  # hand-tuned landmark

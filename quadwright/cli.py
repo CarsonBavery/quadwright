@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import trimesh
 import typer
@@ -221,6 +222,19 @@ def build(config: Path = ConfigArg) -> None:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
+    # FR-23: build_parts leaves out any group narrower than the tool, so a
+    # building in no part's building_ids was dropped. Keep them out of the
+    # 3D model too (it should show the kit), and name them in the reports.
+    in_kit = {osm_id for part in parts for osm_id in part.building_ids}
+    skipped = [b for b in buildings if b.osm_id not in in_kit]
+    kit_buildings = [b for b in buildings if b.osm_id in in_kit]
+    if skipped:
+        typer.secho(
+            f"Skipped {len(skipped)} building(s) narrower than the "
+            f"{cfg.tool.diameter_mm:g} mm tool (listed in tier_report / kit.json).",
+            fg=typer.colors.YELLOW,
+        )
+
     out_dir = Path("outputs") / cfg.campus.name
 
     if "part_stl" in cfg.outputs:
@@ -240,7 +254,11 @@ def build(config: Path = ConfigArg) -> None:
     if (needs_base or "heightmap" in cfg.outputs) and cfg.campus.lidar_project:
         terrain_grid = _load_terrain_grid(cfg, scale_mm_per_m)
 
-    report: dict[str, float | int] = {"building_count": len(buildings), "part_count": len(parts)}
+    report: dict[str, Any] = {
+        "building_count": len(buildings),
+        "part_count": len(parts),
+        "skipped_buildings": [{"osm_id": b.osm_id, "name": b.name} for b in skipped],
+    }
     base_mesh: trimesh.Trimesh | None = None
     if needs_base:
         base_mesh = _build_base(cfg, campus_outline_m, origin_m, scale_mm_per_m, terrain_grid)
@@ -281,7 +299,7 @@ def build(config: Path = ConfigArg) -> None:
                 BASE_PLATE_THICKNESS_MM,
             )
         )
-        placed = place_buildings(buildings, footprints_mm, heights_mm, parts, ground)
+        placed = place_buildings(kit_buildings, footprints_mm, heights_mm, parts, ground)
         scene = build_campus_scene(base_mesh, placed)
         if "model_glb" in cfg.outputs:
             glb_path = write_glb(scene, out_dir / "model.glb")
@@ -306,7 +324,7 @@ def build(config: Path = ConfigArg) -> None:
     if "tier_report" in cfg.outputs:
         out_dir.mkdir(parents=True, exist_ok=True)
         report_path = out_dir / "tier_report.txt"
-        report_path.write_text(build_tier_report(parts), encoding="utf-8")
+        report_path.write_text(build_tier_report(parts, skipped), encoding="utf-8")
         typer.secho(f"Wrote {report_path}", fg=typer.colors.GREEN)
 
     if "setup_sheets" in cfg.outputs:

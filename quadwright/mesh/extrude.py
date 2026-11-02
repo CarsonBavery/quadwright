@@ -18,6 +18,9 @@ from shapely.geometry import MultiPolygon, Polygon
 # above it, so each campus needs a thicker blank -- see base_stock_mm.
 BASE_PLATE_THICKNESS_MM = 23.0
 
+# 1 micron: far below any tool, far above floating-point noise (see extrude_box).
+_SIMPLIFY_MM = 0.001
+
 
 def extrude_box(footprint_mm: Polygon | MultiPolygon, height_mm: float) -> trimesh.Trimesh:
     """Extrude a flat-roofed box from a part-local footprint, in model mm.
@@ -28,7 +31,14 @@ def extrude_box(footprint_mm: Polygon | MultiPolygon, height_mm: float) -> trime
     Some real OSM buildings (relations with multiple ways) normalize to a
     MultiPolygon rather than a single Polygon -- extrude each piece and
     stitch them into one mesh, since trimesh only extrudes one ring at a time.
+
+    Shapely unions and buffers (quadwright.parts.merge) leave behind
+    zero-length and micron-long edges; trimesh's triangulator turns those
+    into a mesh that isn't a closed volume, and the joinery booleans then
+    refuse it. Simplifying at _SIMPLIFY_MM removes them without moving any
+    edge by more than a mill could ever resolve.
     """
+    footprint_mm = footprint_mm.simplify(_SIMPLIFY_MM)
     if isinstance(footprint_mm, MultiPolygon):
         parts = [trimesh.creation.extrude_polygon(piece, height_mm) for piece in footprint_mm.geoms]
         return trimesh.util.concatenate(parts)

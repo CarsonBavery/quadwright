@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from quadwright.config import load_config, load_species_config
+from quadwright.config import Tiers, load_config, load_species_config
 
 EXAMPLE = Path(__file__).parents[1] / "configs" / "campuses" / "example-university.yaml"
 SPECIES_DIR = Path(__file__).parents[1] / "configs" / "species"
@@ -88,3 +88,12 @@ def test_fr18_species_config_rejects_unknown_keys(tmp_path):
     path.write_text(yaml.safe_dump({"species": "maple", "claerance_mm": 0.15}))  # typo
     with pytest.raises(ValidationError):
         load_species_config("maple", species_dir=tmp_path)
+
+
+def test_fr23_merge_gap_defaults_to_half_a_millimeter():
+    assert Tiers().merge_gap_mm == 0.5
+
+
+def test_fr23_negative_merge_gap_is_rejected():
+    with pytest.raises(ValidationError):
+        Tiers(merge_gap_mm=-0.1)

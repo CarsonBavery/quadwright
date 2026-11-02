@@ -41,41 +41,29 @@ this tool at this scale cut it?" (M21). That keeps goal 2 from breaking goal 1.
 
 ---
 
-## Phase 0: Land the open stack
+## Phase 0: Land the open stack (done)
 
-| PR | What | Order |
-| --- | --- | --- |
-| #35 | never cache a truncated LIDAR tile | any time |
-| #36 | dowel pins land on material | any time |
-| #34 | LIDAR heights + `model_glb`/`model_png` | before #37 |
-| #37 | UW-Madison config | after #34 |
-
-Then run a full `quadwright build` on uw-madison. It has only been previewed so far.
+#34-#38 merged 2026-11-02.
 
 ## Phase 1: Always buildable
 
-### M15 `quadwright check`: the manufacturability gate (FR-22)
+### Done 2026-11-02 (Carson's decisions)
+- **FR-22 base floor:** 23 mm minimum under the lowest terrain point. `build` reports each campus's stock (unc-charlotte: 33.6 mm).
+- **FR-23 merge rule (ADR-0006), replacing M16 plinths and M19:** merge only at ≤ `tiers.merge_gap_mm` (0.5 mm). Every part is one polygon (closing + bridges). Parts narrower than the bit are dropped and listed.
+
+### M15 `quadwright check`: the manufacturability gate (FR-26)
 A new `quadwright/check/` stage reads `kit.json` and the STLs, and `build`
 runs it at the end (non-zero exit on errors). Every later milestone adds
 its own rules here. That's how the "consistently" part of the goal gets enforced.
 
 - Add `load_kit()` so the check reads the contract and doesn't re-derive anything (CLAUDE.md: kit.json is the contract).
-- Rules to start with: each part STL is watertight and **one connected body**. Each joint lies on material. No feature is narrower than the tool unless it's tagged as engraving. The pocket doesn't break through the base. Every part's footprint fits inside the base. Parts don't overlap.
-- Writes `outputs/<c>/check_report.txt`. Today's UNC kit would fail, which is the point: it gives a baseline to measure progress against.
-
-### M16 Plinth parts: make every part one piece of wood (FR-23, ADR-0006)
-48 of UNC's 65 parts are disconnected islands. Give each merged group a
-shared ground slab:
-
-- Plinth outline = union of members buffered by a margin, then closed (`buffer(+r).buffer(-r)`), so close buildings join. The slab is milled from the same blank, below the buildings.
-- The **plinth outline becomes the tenon**, which is a simpler shape than the old union-of-islands tenons.
-- Buildings stay separate on top, each at its own height. That also fixes the "milled to the tallest member" problem: a merged part gets real stepped heights for free.
-- ADR-0006 amends ADR-0004 ("each part = one building box" becomes "each part = plinth + buildings").
+- Rules to start with: each part STL is watertight and **one connected body** (dowel parts too small for two pins currently fail this). Each joint lies on material. No feature is narrower than the tool unless it's tagged as engraving. The pocket doesn't break through the base. Every part's footprint fits inside the base. Parts don't overlap.
+- Writes `outputs/<c>/check_report.txt`. Today's UNC kit still fails some rules, which is the point: it gives a baseline to measure progress against.
 
 ### M17 Terrain-aware seating: pads and pockets in contoured bases (FR-24)
 Today a terrain base gets no joinery and parts sink into slopes.
 
-- For each part, flatten a **landing pad** into the terrain: cut the base down to a plane at `min_height_under` within the plinth outline (plus a small apron), then cut the pocket into that flat floor. This replaces the `terrain_grid is None` special case in `cli.build`.
+- For each part, flatten a **landing pad** into the terrain: cut the base down to a plane at `min_height_under` within the part outline (plus a small apron), then cut the pocket into that flat floor. This replaces the `terrain_grid is None` special case in `cli.build`.
 - Reuses `GroundHeightLookup.min_height_under`. The cutting reuses `pocket_cutter_for_part` with `base_top_mm` per part.
 
 ### M18 Tool-radius geometry (FR-25)
@@ -83,15 +71,6 @@ A round bit leaves a radius of `tool.radius_mm` in every inside corner of a pock
 
 - Either cut **dogbone reliefs** at the pocket's inside corners, or **round the tenon's outside corners** to match. *Fabrication decision: Carson picks.*
 - Add an `as_cut(shape, tool)` helper (a morphological opening by the tool radius). Use it in the check and in `model_png`, so the preview shows the shape the mill can actually make.
-
-### M19 Sub-tool feature policy (FR-26)
-7 of UNC's 10 dowel parts are narrower than the 3 mm pin itself (one is 0.7 x 1.2 mm).
-Decide what a building smaller than the tool becomes. *Fabrication decision: Carson picks.* The options:
-- absorb it into the nearest plinth (as a raised bump if it's tall enough),
-- engrave it as an outline into the base with the V-bit, or
-- drop it and list it in the report.
-
-This also retires the dowel fallback for anything a plinth can carry.
 
 ### M20 Repeatability harness (FR-27)
 - **CI:** an end-to-end test on a fixture mini-campus (`tests/fixtures/` geojson plus synthetic LAS written in-test, as `test_lidar` already does) through `build` and then `check`, asserting zero errors.
@@ -156,16 +135,13 @@ Per CLAUDE.md ("ask rather than guess" on fabrication):
 
 | When | Decision |
 | --- | --- |
-| M16 | plinth thickness and margin; minimum gap that still joins two buildings |
-| M17 | pad apron width; whether pads may cut below the base's 6 mm floor |
+| M17 | pad apron width; whether pads may cut below the 23 mm floor |
 | M18 | dogbone reliefs vs rounded tenons |
-| M19 | sub-tool buildings: absorb, engrave, or drop |
 | M21 | finishing bit size; district scale for UNC's core |
 
 ## Good hands-on pieces (learning mode)
 Each is about 5-10 lines with a real trade-off:
 - the M15 rule severities (what counts as an error vs a warning),
-- M19's policy function,
 - M22's height-clustering tolerance (how different two roof levels must be to stay separate),
 - M25's feature set.
 

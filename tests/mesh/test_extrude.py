@@ -42,6 +42,17 @@ def test_fr06_extrude_box_handles_multipolygon_footprints():
     assert mesh.volume == pytest.approx((SQUARE_MM.area + other_square.area) * 25.0)
 
 
+def test_fr23_extrude_box_survives_a_duplicate_vertex_and_micron_edges():
+    # The kind of outline merge's unions/buffers leave: a repeated vertex
+    # and a 0.0005mm jog. Unsimplified, trimesh can't close the volume.
+    messy = Polygon([(0, 0), (10, 0), (10, 0), (10, 5), (10.0005, 5.0002), (10, 10), (0, 10)])
+
+    mesh = extrude_box(messy, height_mm=5.0)
+
+    assert mesh.is_volume
+    assert mesh.volume == pytest.approx(100.0 * 5.0, rel=1e-3)
+
+
 def test_fr22_base_floor_is_at_least_23mm():
     assert BASE_PLATE_THICKNESS_MM >= 23.0
 

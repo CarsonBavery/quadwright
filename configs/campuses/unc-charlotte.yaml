@@ -27,6 +27,7 @@ heights:
   meters_per_level: 3.5
 
 tiers:
+  merge_gap_mm: 0.5   # ~3.5 m of real ground at this scale
   merge_below_tool_diameters: 3
   rotate_above_tool_diameters: 20
 

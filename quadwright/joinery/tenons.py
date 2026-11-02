@@ -22,9 +22,9 @@ class MissingClearanceError(ValueError):
 # ADR-0004 says "small parts fall back to two dowels" but doesn't say how
 # small, so this reuses assign_tier's tool-diameter-relative style
 # (quadwright.parts.tiers) rather than inventing a new kind of threshold.
-# Tier.MERGE parts already got bulked up by merge_isolated_small_parts
-# (quadwright/parts/merge.py) before this runs, so "small" here means
-# "still small despite that merge pass".
+# build_parts (quadwright/parts/merge.py) already dropped anything under
+# one tool diameter, so this only ever sees parts between 1 and 2 tool
+# diameters across on their narrow side.
 DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS = 2.0
 
 
