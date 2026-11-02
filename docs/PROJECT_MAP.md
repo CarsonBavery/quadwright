@@ -74,7 +74,7 @@ uses its bounds.
 | `parts/tiers.py` | tier rule | `assign_tier`: override > height > rotate threshold -> ROTATED; narrow side < merge threshold -> MERGE; else BLOCK | `tests/parts/test_tiers.py` |
 | `parts/setups.py` | tier -> setups | `assign_setups` (BLOCK: top; ROTATED/HERO: top + 4 sides) | `tests/parts/test_setups.py` |
 | `parts/report.py` / `sheets.py` | text outputs | `build_tier_report` (+ skipped buildings section), `build_setup_sheets` | `tests/parts/test_report.py`, `test_sheets.py` |
-| `joinery/tenons.py` | joint *decision* | `build_joint`, `MissingClearanceError`, `_needs_dowel_fallback`, `DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS`, `_dowel_points` (#36) | `tests/joinery/test_tenons.py` |
+| `joinery/tenons.py` | joint *decision* | `build_joint`, `MissingClearanceError`, `_needs_dowel_fallback`, `_pins_fit` (dowels only if both holes fit; else tenon), `DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS`, `_dowel_points` (#36) | `tests/joinery/test_tenons.py` |
 | `joinery/cut.py` | joint *geometry* (the only booleans besides coupon) | `boss_for_joint`, `pocket_cutter_for_part`, `POCKET_DEPTH_MM`, `DOWEL_DIAMETER_MM`, `_OVERSHOOT_MM` | `tests/joinery/test_cut.py` |
 | `fab/coupon.py` | clearance test piece | `build_coupon`, `build_manifest`, `DEFAULT_CLEARANCES_MM` | `tests/fab/test_coupon.py` |
 | `export/kit.py` | kit.json writer (no reader yet) | `write_kit`, `_part_to_dict`, `_joint_to_dict` | `tests/export/test_kit.py` |
@@ -113,7 +113,6 @@ cache. Tests never touch the network: fixtures are
 
 ## Known gaps (see docs/ROADMAP.md)
 
-- Dowel parts too small for two pins get overlapping, overhanging pins (7 non-watertight UNC STLs).
 - 70 of UNC's 286 buildings drop out at a 3.175 mm bit (narrower than ~22 m real).
 - Terrain bases get no pockets (`build` warns and skips), so the real campuses have no joinery.
 - Parts are seated at `min_height_under` and sink into slopes. There is no flat landing pad.
