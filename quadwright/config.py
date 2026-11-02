@@ -13,7 +13,15 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-OutputKind = Literal["part_stl", "base_stl", "heightmap", "setup_sheets", "tier_report"]
+OutputKind = Literal[
+    "part_stl",
+    "base_stl",
+    "heightmap",
+    "setup_sheets",
+    "tier_report",
+    "model_glb",  # FR-21: the assembled campus as a 3D file (glTF binary)
+    "model_png",  # FR-21: a rendered picture of the same assembled campus
+]
 
 
 class _Strict(BaseModel):

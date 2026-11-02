@@ -9,8 +9,13 @@ the result is one watertight solid, not just a draped surface.
 
 from __future__ import annotations
 
+import math
+from typing import Protocol
+
 import numpy as np
+import shapely
 import trimesh
+from shapely.affinity import translate
 from shapely.geometry import MultiPolygon, Polygon
 
 from quadwright.resolve.terrain import HeightGrid
@@ -51,11 +56,42 @@ def build_terrain_plate(
     return solid
 
 
+class GroundSurface(Protocol):
+    """Anything a building or part can be seated on: a terrain block or a flat slab."""
+
+    def min_height_under(
+        self, footprint_local: Polygon | MultiPolygon, position_on_base: tuple[float, float]
+    ) -> float: ...
+
+
+class FlatGround:
+    """A flat base plate's top surface: the same height everywhere."""
+
+    def __init__(self, top_mm: float):
+        self._top_mm = top_mm
+
+    def __call__(self, x_mm: float, y_mm: float) -> float:
+        return self._top_mm
+
+    def min_height_under(
+        self, footprint_local: Polygon | MultiPolygon, position_on_base: tuple[float, float]
+    ) -> float:
+        return self._top_mm
+
+
 class GroundHeightLookup:
     """Converts a local-mm (x, y) into the terrain's top-surface z, in model mm.
 
     Use the same grid/scale/exaggeration/thickness passed to
     `build_terrain_plate` so a part's base lines up with the mesh it sits on.
+
+    "Lines up" is exact, not approximate: `build_terrain_plate` puts one
+    vertex per grid cell and splits every cell into two triangles along
+    the same diagonal, so the surface between vertices is flat triangles
+    -- and this lookup interpolates on exactly those triangles. (Reading
+    the nearest cell instead is off by up to a whole cell's worth of
+    slope -- ~22m of real ground on unc-charlotte -- which shows up as
+    buildings floating or sinking.)
     """
 
     def __init__(
@@ -65,19 +101,32 @@ class GroundHeightLookup:
         vertical_exaggeration: float,
         base_thickness_mm: float,
     ):
-        self._grid = grid
-        self._scale_mm_per_m = scale_mm_per_m
-        self._vertical_exaggeration = vertical_exaggeration
-        self._base_thickness_mm = base_thickness_mm
-        self._z_min_m = np.nanmin(grid.heights_m)
+        # Same formula as build_terrain_plate's top_z_mm, so the two can't drift apart.
+        z_min_m = np.nanmin(grid.heights_m)
+        self._top_z_mm = (
+            grid.heights_m - z_min_m
+        ) * scale_mm_per_m * vertical_exaggeration + base_thickness_mm
+        self._cell_mm = grid.cell_size_m * scale_mm_per_m
 
     def __call__(self, x_mm: float, y_mm: float) -> float:
-        x_m = self._grid.origin_m[0] + x_mm / self._scale_mm_per_m
-        y_m = self._grid.origin_m[1] + y_mm / self._scale_mm_per_m
-        elevation_m = self._grid.elevation_at(x_m, y_m)
-        return (
-            elevation_m - self._z_min_m
-        ) * self._scale_mm_per_m * self._vertical_exaggeration + self._base_thickness_mm
+        n_rows, n_cols = self._top_z_mm.shape
+        # Position in grid units, clamped onto the mesh (a point past the
+        # last vertex reads the edge height -- the mesh has no surface there).
+        u = min(max(x_mm / self._cell_mm, 0.0), n_cols - 1)
+        v = min(max(y_mm / self._cell_mm, 0.0), n_rows - 1)
+        col, row = min(int(u), max(n_cols - 2, 0)), min(int(v), max(n_rows - 2, 0))
+        fu, fv = u - col, v - row
+        next_col, next_row = min(col + 1, n_cols - 1), min(row + 1, n_rows - 1)
+
+        z = self._top_z_mm
+        # Cell corners, named like _grid_surface's vertices: a=(row, col),
+        # b=(row, col+1), c=(row+1, col), d=(row+1, col+1). Its two
+        # triangles are (a, b, c) and (b, d, c), split along the b-c diagonal.
+        za, zb = z[row, col], z[row, next_col]
+        zc, zd = z[next_row, col], z[next_row, next_col]
+        if fu + fv <= 1.0:  # in triangle a-b-c
+            return float(za + fu * (zb - za) + fv * (zc - za))
+        return float(zd + (1 - fu) * (zc - zd) + (1 - fv) * (zb - zd))  # in triangle b-d-c
 
     def min_height_under(
         self, footprint_local: Polygon | MultiPolygon, position_on_base: tuple[float, float]
@@ -87,22 +136,58 @@ class GroundHeightLookup:
         Sampling ground height at only one point (e.g. a part's own local
         origin) lets a flat-bottomed part "float": its bottom touches
         ground at that one point while hovering above the (sloped)
-        terrain everywhere else under it. This samples every footprint
-        vertex instead and returns the lowest, so the part's bottom
-        always rests on or slightly into the terrain -- never above it.
+        terrain everywhere else under it. So this returns the true
+        minimum over the whole footprint, so the part's bottom always
+        rests on or slightly into the terrain -- never above it.
+
+        Exact, not sampled: the surface is flat triangles, and a flat
+        (linear) function over a region bounded by straight lines reaches
+        its minimum at a corner of that region. Overlaying the footprint
+        on the triangle mesh, those corners are (1) the footprint's own
+        vertices, (2) mesh vertices inside the footprint -- e.g. a dip
+        under the middle of a big building that no wall touches -- and
+        (3) points where a footprint edge crosses a triangle edge.
+        Checking all three finds the minimum without guessing a sample
+        spacing.
         """
         offset_x, offset_y = position_on_base
-        polygons = (
-            footprint_local.geoms
-            if isinstance(footprint_local, MultiPolygon)
-            else [footprint_local]
-        )
-        heights = [
-            self(x + offset_x, y + offset_y)
-            for polygon in polygons
-            for x, y in polygon.exterior.coords
-        ]
-        return min(heights)
+        placed = translate(footprint_local, xoff=offset_x, yoff=offset_y)
+        return min(self(x, y) for x, y in self._candidate_points(placed))
+
+    def _candidate_points(self, footprint: Polygon | MultiPolygon) -> list[tuple[float, float]]:
+        cell = self._cell_mm
+        polygons = footprint.geoms if isinstance(footprint, MultiPolygon) else [footprint]
+        rings = [ring for polygon in polygons for ring in (polygon.exterior, *polygon.interiors)]
+        points: list[tuple[float, float]] = []
+
+        for ring in rings:
+            coords = list(ring.coords)
+            points.extend(coords)
+            for (x0, y0), (x1, y1) in zip(coords, coords[1:], strict=False):
+                # Triangle edges lie on three families of lines, in grid
+                # units: x = k (columns), y = k (rows), and x + y = k (the
+                # b-c diagonals). Along a segment each family's value
+                # changes linearly, so solve for where it hits each integer.
+                for f0, f1 in (
+                    (x0 / cell, x1 / cell),
+                    (y0 / cell, y1 / cell),
+                    ((x0 + y0) / cell, (x1 + y1) / cell),
+                ):
+                    if f0 == f1:
+                        continue
+                    for k in range(math.ceil(min(f0, f1)), math.floor(max(f0, f1)) + 1):
+                        t = (k - f0) / (f1 - f0)
+                        points.append((x0 + t * (x1 - x0), y0 + t * (y1 - y0)))
+
+        min_x, min_y, max_x, max_y = footprint.bounds
+        cols = np.arange(math.ceil(min_x / cell), math.floor(max_x / cell) + 1) * cell
+        rows = np.arange(math.ceil(min_y / cell), math.floor(max_y / cell) + 1) * cell
+        if len(cols) and len(rows):
+            grid_x, grid_y = (a.ravel() for a in np.meshgrid(cols, rows))
+            # Vertices exactly on the outline are already edge crossings above.
+            inside = shapely.contains_xy(footprint, grid_x, grid_y)
+            points.extend(zip(grid_x[inside], grid_y[inside], strict=True))
+        return points
 
 
 def _grid_surface(
@@ -157,7 +242,12 @@ def _perimeter_walls(xs_mm: np.ndarray, ys_mm: np.ndarray, top_z_mm: np.ndarray)
     for i in range(n):
         j = (i + 1) % n
         top_i, top_j, bot_i, bot_j = i, j, i + n, j + n
-        faces.append((top_i, top_j, bot_j))
-        faces.append((top_i, bot_j, bot_i))
+        # The perimeter runs counter-clockwise seen from above, so going
+        # top_i -> bot_i -> bot_j turns the normal outward -- matching the
+        # top surface (normals up) and bottom (normals down). Winding these
+        # the other way made the solid inside-out at its walls: still
+        # watertight, but not a consistent volume.
+        faces.append((top_i, bot_i, bot_j))
+        faces.append((top_i, bot_j, top_j))
 
     return trimesh.Trimesh(vertices=vertices, faces=np.array(faces), process=False)

@@ -39,4 +39,7 @@ tiers:
 roofs:
   engine: rules                # rules | ml
 
-outputs: [part_stl, base_stl, setup_sheets, tier_report]
+# Pick any of: part_stl, base_stl, heightmap, setup_sheets, tier_report,
+# model_glb (the assembled campus in 3D -- opens in Windows 3D Viewer,
+# Blender, or https://gltf-viewer.donmccurdy.com), model_png (a rendered view).
+outputs: [part_stl, base_stl, setup_sheets, tier_report, model_glb, model_png]
