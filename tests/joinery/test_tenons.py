@@ -1,10 +1,15 @@
 """FR-18: build each Part's Joint from a measured clearance_mm."""
 
 import pytest
-from shapely.geometry import Point, Polygon, box
+from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from quadwright.joinery import tenons
-from quadwright.joinery.tenons import MissingClearanceError, _needs_dowel_fallback, build_joint
+from quadwright.joinery.tenons import (
+    MissingClearanceError,
+    _dowel_points,
+    _needs_dowel_fallback,
+    build_joint,
+)
 
 
 def test_fr18_needs_dowel_fallback_below_threshold():
@@ -46,3 +51,22 @@ def test_fr18_dowel_fallback_places_two_points_inside_the_footprint(monkeypatch)
     (x1, y1), (x2, y2) = joint.dowel_points
     assert y1 == y2  # placed along the wider axis
     assert x1 != x2
+
+
+def test_fr18_dowel_points_land_on_material_for_a_u_shaped_footprint():
+    # The centroid of a U sits in its open notch, not on material.
+    u_shape = box(0, 0, 6, 6).difference(box(1, 2, 5, 6))
+    assert not u_shape.contains(u_shape.centroid)
+
+    for x, y in _dowel_points(u_shape):
+        assert u_shape.contains(Point(x, y))
+
+
+def test_fr18_dowel_points_share_the_largest_island_of_a_multipolygon():
+    # A merged part of two separate buildings: the centroid falls in the gap.
+    small, large = box(0, 0, 2, 2), box(5, 0, 11, 3)
+    footprint = MultiPolygon([small, large])
+
+    points = _dowel_points(footprint)
+
+    assert all(large.contains(Point(x, y)) for x, y in points)
