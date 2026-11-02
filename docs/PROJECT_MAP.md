@@ -69,7 +69,7 @@ uses its bounds.
 | `resolve/terrain.py` | ground grid from LAS class 2 | `HeightGrid`, `build_height_grid` (per-cell mean, `_fill_empty_cells`), `GROUND_CLASSIFICATION`, `_vertical_unit_to_meters` | `tests/resolve/test_terrain.py` |
 | `resolve/lidar_heights.py` (#34) | LoD1 heights from LAS class 6 | `measure_building_heights` (roof p70 - ground p5 in a 0.5-4 m ring), `apply_lidar_heights` (replaces only `levels`/`default`), `_PointsSortedByX` | `tests/resolve/test_lidar_heights.py` |
 | `mesh/scale.py` | m -> mm | `compute_scale_mm_per_m` (min of the two axis factors), `to_model_mm`, `scale_buildings` | `tests/mesh/test_scale.py` |
-| `mesh/extrude.py` | flat boxes, no booleans (ADR-0004) | `extrude_box` (handles MultiPolygon by concatenation), `build_base_plate`, `BASE_PLATE_THICKNESS_MM` | `tests/mesh/test_extrude.py` |
+| `mesh/extrude.py` | flat boxes, no booleans (ADR-0004) | `extrude_box` (handles MultiPolygon by concatenation), `build_base_plate`, `base_stock_mm` (blank thickness = top z, FR-22), `BASE_PLATE_THICKNESS_MM` | `tests/mesh/test_extrude.py` |
 | `mesh/terrain.py` | terrain solid + seating | `build_terrain_plate`, `GroundSurface` protocol, `FlatGround`, `GroundHeightLookup` (exact triangle interp, `min_height_under`) | `tests/mesh/test_terrain.py` |
 | `parts/merge.py` | buildings -> Parts | `group_touching_buildings` (O(n^2) flood fill), `merge_isolated_small_parts` (radius = tool x `merge_below`), `build_parts` | `tests/parts/test_merge.py` |
 | `parts/tiers.py` | tier rule | `assign_tier`: override > height > rotate threshold -> ROTATED; narrow side < merge threshold -> MERGE; else BLOCK | `tests/parts/test_tiers.py` |
@@ -89,7 +89,7 @@ classifier planned, `pip install -e ".[ml]"` adds scikit-learn).
 | Constant | Value | File |
 | --- | --- | --- |
 | `clearance_mm` (maple) | 0.15 placeholder | `configs/species/maple.yaml` |
-| `BASE_PLATE_THICKNESS_MM` | 6.0 | `mesh/extrude.py` |
+| `BASE_PLATE_THICKNESS_MM` | 23.0 (Carson's minimum floor, under the lowest terrain point) | `mesh/extrude.py` |
 | `POCKET_DEPTH_MM` | 2.0 | `joinery/cut.py` |
 | `DOWEL_DIAMETER_MM` | 3.0 | `joinery/cut.py` |
 | `DOWEL_FALLBACK_BELOW_TOOL_DIAMETERS` | 2.0 (TODO(carson)) | `joinery/tenons.py` |

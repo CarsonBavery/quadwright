@@ -88,7 +88,7 @@ def test_fr21_scene_names_buildings_by_part_and_colors_them_by_wood():
 def test_fr21_glb_is_real_size_in_meters_with_y_up(tmp_path):
     # A 300 x 200mm base with a 10mm-tall building: in glTF's convention
     # (meters, +Y up) that's 0.3m wide, 0.2m deep, and ~16mm tall.
-    base = build_base_plate(box(0, 0, 300, 200))
+    base = build_base_plate(box(0, 0, 300, 200), thickness_mm=6.0)
     building = seat_building(Polygon([(10, 10), (20, 10), (20, 20)]), 10.0, FlatGround(6.0))
     scene = trimesh.Scene()
     scene.add_geometry(base, node_name="base")
